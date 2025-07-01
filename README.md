@@ -1,10 +1,4 @@
-What is:
-For now its a simples Task Manager project. But with authentication
+integrating validation, background thumbnail generation, or cloud storage!
 
-Roadmap: 
+denial-of-service attacks via large files.
 
-Set a fastapi alabemic backend
-Set a react vite nginx tailwind shadcn fronted 
-Integrate Authentication
-Create Registration Mechanism
-Have Tasks for each Person
