@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn:
+    def SQLALCHEMY_DATABASE_URI(self) -> MultiHostUrl:
         return MultiHostUrl.build(
             scheme="postgresql+psycopg2",
             username=self.DATABASE_USERNAME,
@@ -41,4 +41,4 @@ class Settings(BaseSettings):
         )
     all_cors_origins: list[str] = ["*"]
 
-settings = Settings()
+settings = Settings()# type: ignore[call-arg] | because we load the args from the env
