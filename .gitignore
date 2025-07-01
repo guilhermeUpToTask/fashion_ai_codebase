@@ -1,0 +1,113 @@
+# Python-related
+__pycache__/
+*.pyc
+*.pyd
+.venv/
+env/
+venv/
+instance/
+.pytest_cache/
+.coverage
+htmlcov/
+.cache
+.mypy_cache
+__pycache__
+*.py[cod]
+$py.class
+.DS_Store
+
+# React-related
+node_modules/
+build/
+.cache/
+.parcel-cache/
+.yarn/.cache
+*.lock
+yarn-error.log
+
+# Docker-related
+.dockerignore
+Dockerfile.prod  # If you have separate production Dockerfiles
+.env  # Environment variables - NEVER commit these!
+docker-compose.override.yml # If you have override files
+
+# General
+.idea/  # IntelliJ IDEA files
+.vscode/ # VS Code files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+# Logs and temp files
+*.log
+*.tmp
+temp/
+tmp/
+.history
+
+# OS-specific files (optional)
+.AppleDouble
+.Trash
+ehthumbs.db
+Desktop.ini
+
+# Package managers (if applicable)
+.npmrc
+.yarnrc
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov/
+
+# Distribution files (if you create them)
+dist/
+build/
+
+# Secrets and keys - NEVER commit these!
+*.key
+*.pem
+*.pfx
+
+# Large files (consider using Git LFS for these)
+*.zip
+*.rar
+*.7z
+*.gz
+*.tar
+
+# If you use Poetry
+.venv
+
+# If you use specific IDEs, add their config folders
+.idea/       # IntelliJ IDEA
+.vscode/      # VS Code
+.settings/   # Eclipse
+.project     # Eclipse
+.classpath   # Eclipse
+
+# Add any other files or folders specific to your project
+# Example:
+data/  # If you have a data folder that shouldn't be tracked
+
+# Example for specific file types you don't want to track
+*.svg
+*.png
+
+# If you have specific build artifacts
+*.jar
+*.war
+*.apk
+
+#.env files
+.env
+
+#SSL Certificates
+certs/
+
+security/nginx
+#Fail2Ban Config
+fail2ban/
+
+#Obisidian Docs
+task_maneger_project/
