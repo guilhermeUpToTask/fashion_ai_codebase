@@ -45,10 +45,10 @@ def get_users(
 ) -> list[UserPublic]:
     statement = select(User).offset(skip).limit(limit)
     users = session.exec(statement).all()
-    return users
+    return users # type: ignore
 
 def get_user_count(*, session:Session) -> int:
-    statement = select(User).count()
+    statement = select(User).count() # type: ignore
     count = session.exec(statement).one()
     return count
 

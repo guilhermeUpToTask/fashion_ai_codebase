@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from api.routes import users, auth, upload_images
+from api.routes import users, auth
+from backend.app.api.routes.images import upload_images
 
 api_router = APIRouter()
 api_router.include_router(auth.router)

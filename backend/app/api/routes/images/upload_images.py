@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Header, UploadFile
 import uuid
 from api.deps import SessionDep, CurrentUser
 
+#need to use status enum for status code response!
+
 MAX_FILE_SIZE = 5 * 1024 * 1024 # 5mb // calculate youself later
 ALLOWED_TYPES = {"image/jpeg", "image/png"}
 
@@ -52,12 +54,14 @@ async def upload_single_img(
      except Exception:
           raise HTTPException(status_code=400, detail="Invalid Image")
       
-     img_stream.seek(0) 
+     img_stream.seek(0)
+      
      os.makedirs("imgs", exist_ok=True)
      dest_path = f"imgs/{safe_filename}"   
      with open(dest_path, "wb") as out_file:
           out_file.write(img_stream.getvalue())     
-          
+        
+        # work here to create in the db the image  
      return{
           "name": image_file.filename,
           "safe_filename": safe_filename,

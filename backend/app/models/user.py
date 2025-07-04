@@ -34,7 +34,7 @@ class UpdatePassword(SQLModel):
     new_password: str = Field(min_length=8, max_length=40)
 
 class User(UserBase, table=True):
-    __tablename__ = "user"
+    __tablename__ = "user" # type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
 
