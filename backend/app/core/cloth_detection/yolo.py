@@ -1,4 +1,5 @@
 import os
+import uuid
 from huggingface_hub import hf_hub_download
 import torch
 from ultralytics import YOLO
@@ -44,7 +45,7 @@ print("Model loaded successfully!")
 
 
 # --- Your function remains the same ---
-def extract_clothing_patches(image_path):
+def extract_clothing_patches(image_path)-> list[Image.Image]:
     """
     Recebe o caminho de uma imagem, roda o modelo e retorna lista de PIL.Images
     contendo cada região detectada como roupa.
@@ -58,8 +59,28 @@ def extract_clothing_patches(image_path):
         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
         patch = img.crop((x1, y1, x2, y2))
         patches.append(patch)
-
     return patches
+
+def save_cropped_img_files(image_id:uuid.UUID, crops: list[Image.Image], crops_dir="./cloth_crops"):
+    cropped_img_paths: list[str]= []
+    for i, patch in enumerate(crops):
+            filepath = f"{crops_dir}/crop_{i}_{image_id}.png"
+            patch.save(filepath)
+            cropped_img_paths.append(filepath)
+    print("Saved cropped images...")
+    return cropped_img_paths 
+
+
+def crop_img(image_id:uuid.UUID,image_path:str, crops_dir="./cloth_crops",) -> list[str]:
+    try:
+        crops = extract_clothing_patches(image_path)
+        print(f"Found {len(crops)} clothing items in '{image_path}'.")
+        file_paths = save_cropped_img_files(image_id=image_id, crops=crops)
+        return file_paths
+    except FileNotFoundError:
+        print(f"Error: The image file '{image_path}' was not found.")
+        print("Please create an 'example.jpg' file or change the path in the script.")
+        return []
 
 # Exemplo de uso
 

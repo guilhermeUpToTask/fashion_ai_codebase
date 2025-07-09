@@ -7,6 +7,13 @@ def get_image_by_id(*,  id:uuid.UUID, session:Session) -> ImageDB | None:
     session_image = session.exec(statement).first()
     return session_image
   
+def get_image_list(session: Session) -> list[ImageDB]:
+    statement = select(ImageDB)
+    results = session.exec(statement).all()
+    return list(results)
+
+    
+
 def create_image(*, session:Session, image_in:ImageCreate ) -> ImageDB: 
     db_image = ImageDB.model_validate(image_in)
     

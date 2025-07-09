@@ -1,4 +1,4 @@
-from typing import cast
+from typing import NamedTuple, cast
 from transformers import CLIPProcessor, CLIPModel
 import torch
 
@@ -12,6 +12,11 @@ patterns = ["striped", "floral", "plaid", "solid"]
 categories = ["shirt","polo shirt", "dress", "pants", "sweater", "polo sweater", "blouse"]
 
 fashion_labels = [f"{style} {pattern} {color} {cat}" for style in styles for pattern in patterns for color in colors for cat in categories]
+
+class BestMatch(NamedTuple):
+    best_label: str
+    best_vector: torch.Tensor
+
 
 
 # we can added the labeled texts into a vecto db later
@@ -30,8 +35,14 @@ def embed_labels(labels:list[str], model: CLIPModel, processor: CLIPProcessor) -
        
     return text_features
 
-def get_label_for_img(img_vector: torch.Tensor, model: CLIPModel, processor: CLIPProcessor) -> str: 
+
+
+def get_label_for_img(img_vector: torch.Tensor, model: CLIPModel, processor: CLIPProcessor) -> BestMatch: 
     labels_vector = embed_labels(fashion_labels, model=model, processor=processor)
     similarities = torch.matmul(img_vector, labels_vector.T) 
     best_idx = int(similarities.argmax(dim=1).item())
-    return  fashion_labels[best_idx]
+    
+    best_label = fashion_labels[best_idx]
+    best_vector = labels_vector[best_idx]
+    
+    return BestMatch(best_label=best_label, best_vector=best_vector)

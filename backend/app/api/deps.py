@@ -11,6 +11,8 @@ from sqlmodel import Session
 from core.db import engine
 from core.config import settings
 from models.user import TokenPayload, User
+from core.vector_db.chroma_db import persistent_client
+from chromadb.api import ClientAPI
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl="/auth/login"
@@ -19,8 +21,12 @@ reusable_oauth2 = OAuth2PasswordBearer(
 def get_db() -> Generator[Session, None, None]:
     with Session(engine) as session:
         yield session
-
 SessionDep = Annotated[Session, Depends(get_db)]
+
+def get_chroma_client() -> Generator[ClientAPI, None, None]:
+    yield persistent_client
+ChromaSessionDep = Annotated[ClientAPI, Depends(get_chroma_client)]
+
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 def get_current_user(session: SessionDep, token: TokenDep) -> User:

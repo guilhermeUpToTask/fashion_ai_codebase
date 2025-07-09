@@ -1,10 +1,13 @@
 from io import BytesIO
 import os
+from pathlib import Path
 from PIL import Image
 from typing import Annotated, Any
 from fastapi import APIRouter, Depends, File, HTTPException, Header, UploadFile
 import uuid
 from api.deps import SessionDep, CurrentUser
+from models.image import ImageCreate, ImagePublic, StatusEnum
+from core.image_crud import create_image
 
 #need to use status enum for status code response!
 
@@ -13,11 +16,13 @@ ALLOWED_TYPES = {"image/jpeg", "image/png"}
 
 router = APIRouter(prefix="/upload_images", tags=["upload_images"])
 
+
 @router.post("/")
 async def upload_single_img(
+     session:SessionDep,
      content_length: Annotated[int, Header()],
      image_file: Annotated[UploadFile, File(description="Image File")],
-) :
+)-> ImagePublic :
      if image_file.content_type not in ALLOWED_TYPES:
            raise HTTPException(status_code=400, detail="Invalid file type")
      
@@ -60,14 +65,18 @@ async def upload_single_img(
      dest_path = f"imgs/{safe_filename}"   
      with open(dest_path, "wb") as out_file:
           out_file.write(img_stream.getvalue())     
-        
-        # work here to create in the db the image  
-     return{
-          "name": image_file.filename,
-          "safe_filename": safe_filename,
-          "type": image_file.content_type,
-          "content_length": content_length,
-          "width": width,
-          "height": heigth,
-           "size_bytes": size,
-          }
+     
+     img_in = ImageCreate(
+          path=dest_path,
+          filename=safe_filename,
+          width=width,
+          height=heigth,
+          format=img.format if hasattr(img, "format") else None,
+          status=StatusEnum.UPLOADED  
+     )
+     print(f"image_in:{img_in}")
+     
+     image_db = create_image(session=session, image_in=img_in)
+     image_public = ImagePublic.model_validate(image_db)
+
+     return image_public

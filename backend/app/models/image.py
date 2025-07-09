@@ -1,27 +1,34 @@
+from enum import Enum
 import uuid
-from sqlmodel import Relationship, SQLModel, Field
+from sqlmodel import JSON, Relationship, SQLModel, Field
 from pydantic import field_validator
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
+
+class StatusEnum(str, Enum):
+    UPLOADED = "uploaded"
+    CROPPED = "cropped"
+    EMBEDDED = "embedded"
+    LABELED = "labeled"
+    STORED = "stored"
 
 class ImageBase(SQLModel):
-    path: Path = Field(..., description="Filesystem path to the image")
-    label: Optional[str] = Field(None, description="Label (e.g., sweater, jacket, etc.)")
-    label_vector: Optional[List[float]] = Field(None, description="Vector embedding of the label")
-    img_vector: Optional[List[float]] = Field(None, description="Vector embedding of the image")
-    width: Optional[int] = Field(None, gt=0, description="Image width in pixels")
-    height: Optional[int] = Field(None, gt=0, description="Image height in pixels")
-    format: Optional[str] = Field(None, description="Image format, e.g., PNG, JPEG")
-    
-    is_crop: Optional[bool] = Field(False, description="Indicates if this image is a cropped part of a larger image")
+    path: str = Field(..., description="Filesystem path to the image")
+    filename:str
+    label: str | None = Field(default=None, description="Label (e.g., sweater, jacket, etc.)")
+    width: int | None = Field(default=None, gt=0, description="Image width in pixels")
+    height: int | None = Field(default=None, gt=0, description="Image height in pixels")
+    format: str | None = Field(default=None, description="Image format, e.g., PNG, JPEG")
+    status: StatusEnum = Field(description="Process status of the image")
     original_id: Optional[uuid.UUID] = Field(default=None, foreign_key="image.id", description="ID of original image if this is a crop")
 
 
     @field_validator("path")
-    def path_must_exist(cls, v: Path):
-        if not v.exists():
+    def path_must_exist(cls, v: str): # Change type hint to str
+        # Convert to Path object for validation, then discard or don't store it
+        if not Path(v).exists(): # Convert string to Path for existence check
             raise ValueError(f"Image path does not exist: {v}")
-        return v
+        return v # Return the string, as the field is now str
 
 class ImageDB(ImageBase, table=True):
     __tablename__ = "image" # type: ignore
@@ -34,12 +41,13 @@ class ImageCreate(ImageBase):
 
 class ImagePublic(SQLModel):
     id:uuid.UUID
-    label:str = Field(description="Label (e.g., sweater, jacket, etc.)")
-
+    label:str | None
+    status: StatusEnum
+    
 class ImageUpdate(SQLModel):
-    label: Optional[str] = Field(None, description="Label (e.g., sweater, jacket, etc.)")
-    label_vector: Optional[List[float]] = Field(None, description="Vector embedding of the label")
-    img_vector: Optional[List[float]] = Field(None, description="Vector embedding of the image")
+    filename:str | None= Field(default=None)
+    status: StatusEnum | None = Field(default=None)
+    label: Optional[str] = Field(default=None)
 
 class ImageDelete():
     id: uuid.UUID
