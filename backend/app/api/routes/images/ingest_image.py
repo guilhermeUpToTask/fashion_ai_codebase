@@ -61,20 +61,5 @@ async def ingest_image(
     
     return ImagePublic.model_validate(updated_img)
     
-       
-#now we need a endpoint for tring to ingest a image query, add the label and vectorize both and use it for searching into the db the similar one.
-@router.post("/query")
-async def ingest_image_query(
-     session:SessionDep,
-     chroma:ChromaSessionDep,
-     image_id:uuid.UUID,
-):
-    image = get_image_by_id(id=image_id, session=session)
-    image = validate_cropped_image(image=image)
-    
-    result = ingest_img.ingest(img_path=image.path)
-
-    #here we will retrive
-    
     
     

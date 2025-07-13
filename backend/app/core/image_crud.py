@@ -1,6 +1,9 @@
+from typing import List
 import uuid
 from sqlmodel import Session, select
 from models.image import ImageCreate, ImageDB, ImageUpdate
+from sqlmodel import col
+
 
 def get_image_by_id(*,  id:uuid.UUID, session:Session) -> ImageDB | None:
     statement = select(ImageDB).where(ImageDB.id == id)
@@ -12,7 +15,10 @@ def get_image_list(session: Session) -> list[ImageDB]:
     results = session.exec(statement).all()
     return list(results)
 
-    
+def get_image_list_by_ids(session: Session, ids_list: List[uuid.UUID]) -> List[ImageDB]:
+    statement = select(ImageDB).where(col(ImageDB.id).in_(ids_list))
+    result = session.exec(statement).all()
+    return list(result)
 
 def create_image(*, session:Session, image_in:ImageCreate ) -> ImageDB: 
     db_image = ImageDB.model_validate(image_in)
