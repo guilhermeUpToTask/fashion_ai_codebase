@@ -1,79 +1,98 @@
 services:
-#Infra Services
+    #Infra Services
+    traefik:
+        image: traefik:v3.4
+        command:
+            # Enable Docker in Traefik, so that it reads labels from Docker services
+            - --providers.docker
+            - --api.dashboard=true
+            - --api.insecure=true # Removed in prod
+            - --providers.docker.exposedbydefault=false
+            - --entrypoints.web.address=:80
+            - --entrypoints.traefik.address=:8080
+        ports:
+            - "80:80"
+            - "8080:8080"
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+        networks:
+            - app-network
+        deploy:
+            mode: global
+            placement:
+                constraints:
+                    - node.role == manager
+            labels:
+                - traefik.enable=false
 
-  traefik:
-    image: traefik:v3.4
-    command:
-          # Enable Docker in Traefik, so that it reads labels from Docker services
-      - --providers.docker
-      - --api.dashboard=true     
-      - --api.insecure=true # Removed in prod
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80 
-      - --entrypoints.traefik.address=:8080
-    ports:
-      - "80:80"     
-      - "8080:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - app-network
-    deploy:
-      mode: global
-      placement:
-        constraints:
-          - node.role == manager
-      labels:
-        - traefik.enable=false
-
-  postgres:
-    image: postgres:16
-    environment:
-      - POSTGRES_USER=${DATABASE_USERNAME}
-      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
-      - POSTGRES_DB=${DATABASE_NAME}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - app-network
-    deploy:
-      replicas: 1
-      labels:
-        - traefik.enable=false
+    postgres:
+        image: postgres:16
+        environment:
+            - POSTGRES_USER=${DATABASE_USERNAME}
+            - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+            - POSTGRES_DB=${DATABASE_NAME}
+        volumes:
+            - pgdata:/var/lib/postgresql/data
+        networks:
+            - app-network
+        deploy:
+            replicas: 1
+            labels:
+                - traefik.enable=false
+    ml_service:
+        image: ${ML_APP_IMAGE:-fashion-ml:latest}
+        build: "./ml_service"
+        environment:
+            - PROJECT_NAME=${PROJECT_NAME}
+        volumes:
+            - ./ml_service/app:/app
+        labels:
+            - "traefik.enable=true"
+            - "traefik.http.routers.ml_service.rule=Host(`ml_service.docker.localhost`)"
+            - "traefik.http.routers.ml_service.entrypoints=web"
+            - "traefik.http.services.ml_service.loadbalancer.server.port=8080" # <-- Porta interna do FastAPI
+        networks:
+            - app-network
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
 
 #Backend Services
 
-  fashion_ai_backend:
-    image: "${BACKEND_APP_IMAGE}"
-    build: "./backend"
-    environment:
-      - PROJECT_NAME=${PROJECT_NAME}
-      - DATABASE_USERNAME=${DATABASE_USERNAME}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
-      - DATABASE_HOST=postgres
-      - DATABASE_NAME=${DATABASE_NAME}
-      - DATABASE_PORT=5432
-      - ADMIN_USER=${ADMIN_USER}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - ALGORITHM=${ALGORITHM}
-      - SECRET_KEY=${SECRET_KEY}
-    volumes:
-      - ./backend/app:/app  # codesource
-      - ./backend/app/alembic/versions:/app/alembic/versions
-    labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.fashion_ai_backend.rule=Host(`fashion_ai_backend.docker.localhost`)"
-        - "traefik.http.routers.fashion_ai_backend.entrypoints=web"
-        - "traefik.http.services.fastapi-service-lb.loadbalancer.server.port=8000" # <-- Porta interna do FastAPI
-    networks:
-      - app-network
-
+# fashion_ai_backend:
+#   image: "${BACKEND_APP_IMAGE}"
+#   build: "./backend"
+#   environment:
+#     - PROJECT_NAME=${PROJECT_NAME}
+#     - DATABASE_USERNAME=${DATABASE_USERNAME}
+#     - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+#     - DATABASE_HOST=postgres
+#     - DATABASE_NAME=${DATABASE_NAME}
+#     - DATABASE_PORT=5432
+#     - ADMIN_USER=${ADMIN_USER}
+#     - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+#     - ALGORITHM=${ALGORITHM}
+#     - SECRET_KEY=${SECRET_KEY}
+#   volumes:
+#     - ./backend/app:/app  # codesource
+#     - ./backend/app/alembic/versions:/app/alembic/versions
+#   labels:
+#       - "traefik.enable=true"
+#       - "traefik.http.routers.fashion_ai_backend.rule=Host(`fashion_ai_backend.docker.localhost`)"
+#       - "traefik.http.routers.fashion_ai_backend.entrypoints=web"
+#       - "traefik.http.services.fastapi-service-lb.loadbalancer.server.port=8000" # <-- Porta interna do FastAPI
+#   networks:
+#     - app-network
 
 #Database Volume
 volumes:
-  pgdata:
+    pgdata:
 
 #NetWork
 networks:
-  app-network:
-    driver: bridge
+    app-network:
+        driver: bridge

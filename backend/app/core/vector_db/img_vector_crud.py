@@ -51,7 +51,7 @@ def get_images_ids(collection: Collection) -> list[uuid.UUID]:
     print("ids_list:",ids_list)
     return [uuid.UUID(id_str) for id_str in ids_list]
 
-
+#needs to change it to only recive the vectors as list, we will not have the pytorch or any of those deps in the main service
 def get_similar_imgs_for_vector(
     vector: torch.Tensor, collection: Collection, top_k: int
 ) -> uuid.UUID | None:

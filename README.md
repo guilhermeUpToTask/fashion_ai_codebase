@@ -1,3 +1,5 @@
+needs to puts all the ml processing to the stateless ml service
+
 integrating validation, background thumbnail generation, or cloud storage!
 
 denial-of-service attacks via large files.
@@ -6,27 +8,25 @@ denial-of-service attacks via large files.
 Prioritized Action List
 Manual delete the failed crops
 Test Retriver function with a image
-Refactor ML Pipeline (High Priority):
-Introduce a task queue (Celery) and message broker (Redis).
-Move all crop_img and ingest_img calls to asynchronous background workers.
+Refactor ML Pipeline (High Priority): - checked
+Introduce a task queue (Celery) and message broker (Redis). - pendent
+Move all crop_img and ingest_img calls to asynchronous background workers. - checked - its on service ml
 Modify API endpoints to enqueue jobs and return a job ID.
-Implement Singleton Model Loading (High Priority):
-Refactor the application to load all ML models (YOLO, CLIP) only once at worker startup.
-Pre-compute and cache label embeddings at startup.
+Implement Singleton Model Loading (High Priority): - checked - needs testing and maybe changed the loading for a expliciti one in the app/main.py
+Refactor the application to load all ML models (YOLO, CLIP) only once at worker startup. - checked - same as above
+Pre-compute and cache label embeddings at startup. - pendent
 Establish a Test Suite (High Priority):
 Write unit tests for all functions in core/user_crud.py and core/image_crud.py.
 Write integration tests for the auth and users API endpoints.
 Write integration tests for the image workflow, mocking the background workers.
 Fix Dependency Management (Medium Priority):
-Create a requirements.in file for direct dependencies.
-Use pip-compile to generate a pinned requirements.txt.
-Separate development dependencies into requirements-dev.txt.
+
 Address Security Vulnerabilities (Medium Priority):
 Sanitize all user-provided filenames.
 Configure stricter CORS policies for staging/production environments.
 Improve Data and Storage Layers (Medium Priority):
 Abstract file storage to support a cloud provider (e.g., S3).
-Refactor the hardcoded label generation to be more structured and semantic.
+Refactor the hardcoded label generation to be more structured and semantic. - checked
 Improve Documentation (Low Priority):
 Write a comprehensive README.md with setup and usage instructions.
 
@@ -96,3 +96,5 @@ When the admin saves the correction, you update the record in your database.
 The Flywheel Effect:
 Immediate Benefit: The accuracy of your stored data is now perfect for every item a human has reviewed.
 Long-Term Benefit: You are building a high-quality, human-verified dataset. After correcting a few thousand images, you can use this dataset to fine-tune your models (both the cropper and the labeler), drastically improving the baseline accuracy for all future uploads. This is how you achieve state-of-the-art performance.
+
+Create the lifespan manager

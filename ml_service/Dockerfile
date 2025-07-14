@@ -21,9 +21,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy and install requirements.
 # This leverages Docker's layer caching. This layer only rebuilds if requirements.txt changes.
-COPY requirements.ml.txt .
-RUN pip install --no-cache-dir -r requirements.ml.txt
-
+COPY requirements.txt .
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu121 -r requirements.txt
 
 # --- Stage 2: Runtime ---
 # Use the smaller CUDA runtime image for the final stage. It has the necessary libraries
@@ -50,7 +49,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Copy the application code
 WORKDIR /app
-COPY . .
+COPY app/ .
 
 # Set environment variables for the runtime
 ENV PATH="/opt/venv/bin:$PATH"
