@@ -4,7 +4,7 @@ from sqlmodel import JSON, Relationship, SQLModel, Field
 from pydantic import field_validator
 from pathlib import Path
 from typing import List, Optional, Union
-
+from models.label import StructuredLabel
 class StatusEnum(str, Enum):
     UPLOADED = "uploaded"
     CROPPED = "cropped"
@@ -15,7 +15,7 @@ class StatusEnum(str, Enum):
 class ImageBase(SQLModel):
     path: str = Field(..., description="Filesystem path to the image")
     filename:str
-    label: str | None = Field(default=None, description="Label (e.g., sweater, jacket, etc.)")
+    label: StructuredLabel | None = Field(default=None, description="Label structured in color, style, category and etc.")
     width: int | None = Field(default=None, gt=0, description="Image width in pixels")
     height: int | None = Field(default=None, gt=0, description="Image height in pixels")
     format: str | None = Field(default=None, description="Image format, e.g., PNG, JPEG")
