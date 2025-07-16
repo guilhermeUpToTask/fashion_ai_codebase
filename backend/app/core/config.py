@@ -15,6 +15,7 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
     )
+    
     PROJECT_NAME: str
     DATABASE_USERNAME : str
     DATABASE_PASSWORD: str
@@ -25,13 +26,14 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ADMIN_USER: str
     ADMIN_PASSWORD: str
+    ML_SERVICE_URL: str
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     
     @computed_field  # type: ignore[prop-decorator]
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> MultiHostUrl:
-        return MultiHostUrl.build(
+        return MultiHostUrl.build(#change later for only use a database uri
             scheme="postgresql+psycopg2",
             username=self.DATABASE_USERNAME,
             password=self.DATABASE_PASSWORD,

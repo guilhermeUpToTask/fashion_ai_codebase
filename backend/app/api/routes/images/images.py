@@ -82,6 +82,7 @@ async def upload_single_img(
      image_db = create_image(session=session, image_in=img_in)
      image_public = ImagePublic.model_validate(image_db)
 
+    #here we will initializate the pipeline of the tasks
      return image_public
  
  

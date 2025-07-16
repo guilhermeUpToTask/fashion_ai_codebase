@@ -4,7 +4,7 @@
 from chromadb import Collection
 from sqlmodel import Session
 from models.image import ImageDB
-from core.vector_db.img_vector_crud import merge_two_vectors, get_similar_imgs_for_vector
+from core.vector_db.img_vector_crud import get_similar_imgs_for_vector
 from core.image_crud import get_image_by_id
 from torch import Tensor
 
