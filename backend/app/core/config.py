@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
     
+    S3_ENDPOINT_URL: str
+    S3_ACCES_KEY: str
+    S3_SECRET_KEY: str
+    S3_PRODUCT_BUCKET_NAME: str
+    
     @computed_field  # type: ignore[prop-decorator]
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> MultiHostUrl:
