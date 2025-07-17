@@ -12,7 +12,9 @@ class StatusEnum(str, Enum):  # < needs to change the satatus for a better one
     QUEUED = "queued"
     CROPPING = "croppping"
     ANALYZING = "analyzing"
-    CROPPED= "CROPPED"
+    CROPPED = "cropped"
+    LABELLED = "labelled"
+    STORING = "storing"
     STORED = "stored"
     COMPLETE = "complete"
     FAILED = "failed"
@@ -70,7 +72,7 @@ class ImagePublic(SQLModel):
 class ImageUpdate(SQLModel):
     filename: str | None = Field(default=None)
     status: StatusEnum | None = Field(default=None)
-    label: Optional[str] = Field(default=None)
+    label: Optional[StructuredLabel] = Field(default=None)
     processing_details: str | None = Field(default=None)
 
 
