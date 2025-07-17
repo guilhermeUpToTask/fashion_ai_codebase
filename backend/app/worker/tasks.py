@@ -226,7 +226,7 @@ def crop_image_task(self, job_id: UUID) -> list[ImageDB]:
 @celery_app.task(name="tasks.label_image_task", bind=True)  # bind gets acces to 'self'
 def label_image_task(
     self, job_id: UUID, cropped_img_id: UUID, current_cropped_idx: int
-) -> LabelingResponse:  # < should return the structured label and the final vector
+) -> List[float]:  # < should return the structured label and the final vector
     """_summary_
 
     Args:
@@ -257,7 +257,7 @@ def label_image_task(
         )
         response = send_img_request(
             img_path=cropped_img_metadata.path,
-            service_url=f"{Settings.ML_SERVICE_URL}/crop_clothes",
+            service_url=f"{Settings.ML_SERVICE_URL}/label",
             timeout=20,
         )
         response.raise_for_status()
@@ -281,7 +281,7 @@ def label_image_task(
             details=f"Step 2 of 3: Anazying clothing items... cloth item[{current_cropped_idx+1}] completed!",
         )
 
-    return parsed_response
+    return parsed_response.storage_vector
 
 
 @celery_app.task(
@@ -292,7 +292,7 @@ def save_image_vector_task(
     job_id: UUID,
     cropped_img_id: UUID,
     current_cropped_idx: int,
-    store_vector: list[float],
+    storage_vector: list[float],
     collection_name: str,
 ) -> UUID:
     """_summary_
@@ -325,10 +325,10 @@ def save_image_vector_task(
 
         stored_img_id = add_image_embedding(
             img_id=cropped_img_id,
-            img_vector=store_vector,
+            img_vector=storage_vector,
             chroma_session=chroma_client,
             img_label=cropped_img_metadata.label,
-            collection_name=Settings.IMAGES_COLLECTION_NAME,
+            collection_name=collection_name,
         )
         if stored_img_id != cropped_img_metadata.id:
             raise ValueError(
