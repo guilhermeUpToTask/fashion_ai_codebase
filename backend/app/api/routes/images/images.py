@@ -142,7 +142,7 @@ async def index_new_image(
     image_db = create_image(session=session, image_in=img_in)
 
     # start the asynchronous pipeline
-    start_indexing_pipeline(image_db.id)
+    start_indexing_pipeline(img_id=image_db.id)
 
     # return the initial public model of the job, and the 202 accepted status code.
     return ImagePublic.model_validate(image_db)

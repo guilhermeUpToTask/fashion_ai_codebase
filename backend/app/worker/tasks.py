@@ -1,14 +1,16 @@
 # update the database from the worker tasks
 from io import BytesIO
-from typing import List
+from typing import List, cast
 from uuid import UUID
 import celery
+from celery import chain, group
 import requests
 from sqlmodel import Session
 from app.celery import celery_app
+from core import storage
 from core.vector_db.img_vector_crud import add_image_embedding
 from models.image import ImageDB, ImageUpdate, StatusEnum, ImageCreate
-from models.label import LabelingResponse, StructuredLabel
+from models.label import LabelingResponse
 from core.vector_db.chroma_db import persistent_client as chroma_client
 from core.db import engine
 from core.image_crud import (
@@ -18,71 +20,22 @@ from core.image_crud import (
     create_image,
 )
 from core.config import Settings
-from PIL import Image
 import mimetypes
 import base64
-import os
 import logging
-import time
-import glob
 
 logger = logging.getLogger(__name__)
 
-
 # Helper Functions
-def send_img_request(
-    *, img_path: str, service_url: str, timeout: int
+def send_s3_img_to_ml_service(
+    img_filename: str, bucket_name: str, service_url: str, timeout: int = 30
 ) -> requests.Response:
-    with open(img_path, "rb") as img_file:
-        mime_type, _ = mimetypes.guess_type(img_path)
-        files = {
-            "file": (
-                img_path,
-                img_file,
-                mime_type or "application/octet-stream",
-            )
-        }
-        response = requests.post(url=service_url, files=files, timeout=timeout)
+    """Downloads an image from S3 and send its to an ML service."""
+    img_file = storage.download_file_from_s3(bucket=bucket_name, key=img_filename)
+    mime_type, _ = mimetypes.guess_type(img_filename)
+    files = {"file": (img_filename, img_file, mime_type or "application/octet-stream")}
+    response = requests.post(url=service_url, files=files, timeout=timeout)
     return response
-
-
-def convert_base64_to_pil_image(img_b64: str) -> Image.Image:
-    # with Image.open:
-    img_bytes = base64.b64decode(img_b64)
-    img = Image.open(BytesIO(img_bytes))
-    return img
-
-
-def save_image_file(img: Image.Image, imgs_dir: str, img_filename: str) -> str:
-    os.makedirs(imgs_dir, exist_ok=True)  # create if not exists
-    img_path = os.path.join(imgs_dir, img_filename)
-    img.save(img_path, format="PNG")
-    return img_path
-
-
-def generate_filename_for_img(
-    img_name: str,
-    job_id: UUID,
-    extension: str = ".png",
-) -> str:
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    return f"{img_name}_{job_id}_{timestamp}{extension}"
-
-
-def get_or_generate_filename(pattern: str, job_id: UUID, idx) -> str:
-    matches = glob.glob(pattern)
-    if matches:
-        # If you have multiple, pick the newest by file‐ctime
-        latest = max(matches, key=os.path.getctime)
-        img_filename = os.path.basename(latest)
-        logger.info(
-            f"[{job_id}] Found existing crop for idx{idx}, reusing {img_filename}"
-        )
-    else:
-        img_filename = generate_filename_for_img(
-            img_name=f"cropped_img_{idx}", job_id=job_id, extension=".png"
-        )
-    return img_filename
 
 
 def parse_and_retry(response: requests.Response, task: celery.Task, expected_type=list):
@@ -123,7 +76,7 @@ def parse_and_retry(response: requests.Response, task: celery.Task, expected_typ
     retry_backoff=True,
     retry_kwargs={"max_retries": 5},
 )  # bind gets acces to 'self'
-def crop_image_task(self, job_id: UUID) -> list[ImageDB]:
+def crop_image_task(self, job_id: UUID) -> list[UUID]:
     """_summary_
 
     Args:
@@ -148,8 +101,9 @@ def crop_image_task(self, job_id: UUID) -> list[ImageDB]:
             logger.info(f"Sending request to ml service for job:{job_id}")
 
             # sending image to cropping process - needs retry logic
-            response = send_img_request(
-                img_path=job_img.path,
+            response = send_s3_img_to_ml_service(
+                img_filename=job_img.filename,
+                bucket_name=Settings.S3_PRODUCT_BUCKET_NAME,
                 service_url=f"{Settings.ML_SERVICE_URL}/crop_clothes",
                 timeout=20,
             )
@@ -166,45 +120,33 @@ def crop_image_task(self, job_id: UUID) -> list[ImageDB]:
             )
             logger.info(f"{len(b64_images)} cloth pieces scanned. job:{job_id}")
 
-            cropped_imgs: list[ImageDB] = []
+            cropped_img_ids: list[UUID] = []
             for idx, b64_str in enumerate(b64_images):
-                # convert base64 to PIL Image
-                img = convert_base64_to_pil_image(b64_str)
-                logger.info(
-                    f"[{job_id}] Converted image {idx+1}/{len(b64_images)} to PIL, size={img.size}"
-                )
-
-                # checks if filename with the same name exist, if does update it with new image
-                img_filename_pattern = os.path.join(
-                    Settings.CROPPED_IMGS_DIR, f"cropped_img_{idx}_{job_id}_*.png"
-                )
-                img_filename = get_or_generate_filename(
-                    pattern=img_filename_pattern, job_id=job_id, idx=idx
-                )
-                # save images in the crop_imgs
-                img_path = save_image_file(
-                    img=img,
-                    imgs_dir=Settings.CROPPED_IMGS_DIR,
-                    img_filename=img_filename,
+                # decode and convert base64 to BytesIO in memory
+                img_file = BytesIO(base64.b64decode(b64_str))
+                # determinincstic s3 key
+                img_filename = f"cropped_img_{idx}_{job_id}.png"
+                s3_path = storage.upload_file_to_s3(
+                    file_obj=img_file,
+                    bucket_name=Settings.S3_PRODUCT_BUCKET_NAME,
+                    object_name=img_filename,
                 )
                 logger.info(
-                    f"{idx} image file saved of {len(b64_images)}. img_path:{img_path}, job:{job_id}"
+                    f"{idx} image file saved of {len(b64_images)}. img_path:{s3_path}, job:{job_id}"
                 )
 
                 # create a imagedb for each crop - addl later atomacy db with transactions or session.begin
-                # Error Classification & Idempotency
                 # If the ML service returns the same bad payload repeatedly, exponential retries will repeat until max, which is fine. But if you retry after having already saved some crops, the task will duplicate records.
                 # Suggestion: Before creating a new crop image, check if one for this job_id and this index already exists—skip or update instead of blindly inserting duplicates.
                 img_in = ImageCreate(
-                    path=img_path,
+                    path=s3_path,
                     filename=img_filename,
                     status=StatusEnum.CROPPED,
                     original_id=job_img.id,
-                    format=img.format,
                 )
                 new_img = create_image(session=session, image_in=img_in)
 
-                cropped_imgs.append(new_img)
+                cropped_img_ids.append(new_img.id)
                 logger.info(
                     f"{idx} image metadata save into db from ${len(b64_images)}. job:{job_id}"
                 )
@@ -217,7 +159,8 @@ def crop_image_task(self, job_id: UUID) -> list[ImageDB]:
                 details="Step 1 of 2: Cloth Items Detected and Cropped.",
             )
             logger.info("crop image task finished!")
-            return cropped_imgs
+
+            return cropped_img_ids
         except Exception as e:
             logger.error(f"[{job_id}] Error while cropping image", exc_info=True)
             raise e
@@ -226,7 +169,7 @@ def crop_image_task(self, job_id: UUID) -> list[ImageDB]:
 @celery_app.task(name="tasks.label_image_task", bind=True)  # bind gets acces to 'self'
 def label_image_task(
     self, job_id: UUID, cropped_img_id: UUID, current_cropped_idx: int
-) -> List[float]:  # < should return the structured label and the final vector
+) -> List[float]:  # < return the vector that will be insert into the first arg of the save vector task
     """_summary_
 
     Args:
@@ -255,8 +198,9 @@ def label_image_task(
         logger.info(
             f"Seingnd request with cropped_img:{cropped_img_id} to ml_service[label] for job:{job_id}"
         )
-        response = send_img_request(
-            img_path=cropped_img_metadata.path,
+        response = send_s3_img_to_ml_service(
+            img_filename=cropped_img_metadata.filename,
+            bucket_name=Settings.S3_PRODUCT_BUCKET_NAME,
             service_url=f"{Settings.ML_SERVICE_URL}/label",
             timeout=20,
         )
@@ -289,10 +233,10 @@ def label_image_task(
 )  # bind gets acces to 'self'
 def save_image_vector_task(
     self,
+    storage_vector: list[float],  # <-- This MUST be the first
     job_id: UUID,
     cropped_img_id: UUID,
     current_cropped_idx: int,
-    storage_vector: list[float],
     collection_name: str,
 ) -> UUID:
     """_summary_
@@ -348,3 +292,53 @@ def save_image_vector_task(
         )
 
     return cropped_img_id
+
+
+@celery_app.task(name="tasks.finalize_indexing_job_task")
+def finalize_indexing_job_task(results, job_id: UUID):
+    # results is the output of the group (list of crop IDs that were saved)
+    logger.info(f"Finalizing job {job_id}. {len(results)} items processed.")
+    with Session(engine) as session:
+        job_img = get_image_by_id(id=job_id, session=session)
+        if not job_img:
+            logger.error(f"image matedata not found for this job_id:{job_id}")
+            raise ValueError("no Job img metadata found")
+
+        update_job_status(
+            session=session,
+            job_image=job_img,
+            new_status=StatusEnum.COMPLETE,
+            details="All items indexed successfully.",
+        )
+
+
+@celery_app.task(name="tasks.split_for_indexing_task")
+def split_for_indexing_task(cropped_img_ids: list[UUID], job_id: UUID):
+    """Fans out the processing for each crop."""
+    logger.info(f"Splitting job {job_id} into {len(cropped_img_ids)} parallel tasks.")
+    finalize_indexing = cast(celery.Task, finalize_indexing_job_task)
+    if not cropped_img_ids:
+        finalize_indexing.apply_async(kwargs={"results": [], "job_id": job_id})
+        return
+
+    # create the parallel group of chains(label -> save)
+    label_image = cast(celery.Task, label_image_task)
+    save_image_vector = cast(celery.Task, save_image_vector_task)
+    header = group(
+        (
+            chain(
+                label_image.s(
+                    job_id=job_id, cropped_img_id=img_id, current_cropped_idx=idx
+                ),
+                save_image_vector.s(
+                    job_id=job_id,
+                    cropped_img_id=img_id,
+                    current_cropped_idx=idx,
+                    collection_name=Settings.IMAGES_COLLECTION_NAME,
+                ),
+            )
+        )
+        for idx, img_id in enumerate(cropped_img_ids)
+    )
+    # create the chord: run the group and then the finalizer
+    (header | finalize_indexing.s(job_id=job_id)).apply_async()
