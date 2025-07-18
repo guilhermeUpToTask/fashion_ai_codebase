@@ -1,6 +1,6 @@
 
 
-from sqlmodel import UUID
+from uuid import UUID
 
 
 def start_indexing_pipeline(img_id: UUID) -> str:

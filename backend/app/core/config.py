@@ -36,9 +36,11 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str
     
     S3_ENDPOINT_URL: str
-    S3_ACCES_KEY: str
+    S3_ACCESS_KEY: str
     S3_SECRET_KEY: str
     S3_PRODUCT_BUCKET_NAME: str
+    
+    MAX_IMAGE_SIZE_BYTES: int = 10240 # 5mb
     
     @computed_field  # type: ignore[prop-decorator]
     @property

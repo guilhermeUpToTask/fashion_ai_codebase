@@ -21,7 +21,7 @@ class StatusEnum(str, Enum):  # < needs to change the satatus for a better one
 
 
 class ImageBase(SQLModel):
-    path: str = Field(..., description="Filesystem path to the image")
+    path: str = Field(..., description="S3 storage object path to the image")
     filename: str
     label: StructuredLabel | None = Field(
         default=None, description="Label structured in color, style, category and etc."
@@ -40,13 +40,6 @@ class ImageBase(SQLModel):
         foreign_key="image.id",
         description="ID of original image if this is a crop",
     )
-
-    @field_validator("path")
-    def path_must_exist(cls, v: str):  # Change type hint to str
-        # Convert to Path object for validation, then discard or don't store it
-        if not Path(v).exists():  # Convert string to Path for existence check
-            raise ValueError(f"Image path does not exist: {v}")
-        return v  # Return the string, as the field is now str
 
 
 # we will use for now the parent job status for main tracking, later we can study alternatives like tracking status of all the crops images for more granular observability.
