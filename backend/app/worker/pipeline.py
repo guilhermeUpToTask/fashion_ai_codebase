@@ -6,7 +6,6 @@ from worker.tasks import crop_image_task, split_for_indexing_task
 from core.db import engine
 from core.image_crud import update_job_status, get_image_by_id
 from models.image import StatusEnum
-from app.celery import celery_app
 import logging
 
 logger = logging.getLogger(__name__)

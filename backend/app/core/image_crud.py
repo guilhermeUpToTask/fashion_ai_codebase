@@ -25,7 +25,7 @@ def get_image_list_by_ids(session: Session, ids_list: List[uuid.UUID]) -> List[I
 
 def create_image(*, session: Session, image_in: ImageCreate) -> ImageDB:
     db_image = ImageDB.model_validate(image_in)
-
+    print("db image:", db_image)
     session.add(db_image)
     session.commit()
     session.refresh(db_image)
@@ -36,7 +36,6 @@ def create_image(*, session: Session, image_in: ImageCreate) -> ImageDB:
 def update_image(*, session: Session, image_in: ImageUpdate, db_image: ImageDB):
     image_data = image_in.model_dump(exclude_unset=True)
     db_image.sqlmodel_update(image_data)
-
     session.add(db_image)
     session.commit()
     session.refresh(db_image)

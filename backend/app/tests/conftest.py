@@ -1,11 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine
-
-from app.models.task import Task
-from app.models.category import Category
-from app.main import app  # Import your FastAPI app
-from app.api.deps import get_db  # Import your get_db dependenc
+from main import app  # Import your FastAPI app
+from api.deps import get_db  # Import your get_db dependenc
 
 
 @pytest.fixture(scope="session")

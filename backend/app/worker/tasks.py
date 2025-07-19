@@ -2,11 +2,10 @@
 from io import BytesIO
 from typing import List, cast
 from uuid import UUID
-import celery
-from celery import chain, group
+from celery import chain, group, Task
 import requests
 from sqlmodel import Session
-from app.celery import celery_app
+from celery_app import app as celery_app
 from core import storage
 from core.vector_db.img_vector_crud import add_image_embedding
 from models.image import ImageDB, ImageUpdate, StatusEnum, ImageCreate
@@ -38,7 +37,7 @@ def send_s3_img_to_ml_service(
     return response
 
 
-def parse_and_retry(response: requests.Response, task: celery.Task, expected_type=list):
+def parse_and_retry(response: requests.Response, task: Task, expected_type=list):
     """
     Parse JSON payload from a requests.Response and retry on failure.
 
@@ -72,7 +71,7 @@ def parse_and_retry(response: requests.Response, task: celery.Task, expected_typ
 @celery_app.task(
     name="tasks.crop_image_task",
     bind=True,
-    autoretry_for=(requests.RequestException),
+    autoretry_for=([requests.RequestException]),
     retry_backoff=True,
     retry_kwargs={"max_retries": 5},
 )  # bind gets acces to 'self'
@@ -206,6 +205,7 @@ def label_image_task(
         )
         response.raise_for_status()
         data = response.json()
+        #Using LabelingResponse(**data) is clean, but if the service returns extra fields you don’t expect, it’ll error. Consider .dict() in pydantic to filter unknowns, e.g. LabelingResponse.parse_obj(data) with Config.extra = "ignore".
         parsed_response = LabelingResponse(**data)
         logger.info(
             f"request succeffuly made it to service to analyze cloth piece:{cropped_img_id}. job:{job_id}"
@@ -316,14 +316,14 @@ def finalize_indexing_job_task(results, job_id: UUID):
 def split_for_indexing_task(cropped_img_ids: list[UUID], job_id: UUID):
     """Fans out the processing for each crop."""
     logger.info(f"Splitting job {job_id} into {len(cropped_img_ids)} parallel tasks.")
-    finalize_indexing = cast(celery.Task, finalize_indexing_job_task)
+    finalize_indexing = cast(Task, finalize_indexing_job_task)
     if not cropped_img_ids:
         finalize_indexing.apply_async(kwargs={"results": [], "job_id": job_id})
         return
 
     # create the parallel group of chains(label -> save)
-    label_image = cast(celery.Task, label_image_task)
-    save_image_vector = cast(celery.Task, save_image_vector_task)
+    label_image = cast(Task, label_image_task)
+    save_image_vector = cast(Task, save_image_vector_task)
     header = group(
         (
             chain(
@@ -340,5 +340,6 @@ def split_for_indexing_task(cropped_img_ids: list[UUID], job_id: UUID):
         )
         for idx, img_id in enumerate(cropped_img_ids)
     )
+    #Context Passing: Be cautious that results passed to finalize_indexing_job_task is exactly the list of return values from save_image_vector_task. If any task errors, the chord may never fire, leaving the job in limbo. Consider adding an error callback or leveraging chord_error handlers to mark the job as failed.
     # create the chord: run the group and then the finalizer
     (header | finalize_indexing.s(job_id=job_id)).apply_async()

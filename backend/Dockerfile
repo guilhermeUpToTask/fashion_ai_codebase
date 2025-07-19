@@ -1,23 +1,11 @@
 # Build stage
+#later we will migrate to uv
 FROM python:3.12-slim AS builder
 WORKDIR /app
+#will test later the mount cache volume to faster building
+# RUN --mount=type=cache,target=/root/.cache/pip \
+#     pip install --no-cache-dir -r requirements.txt
 COPY requirements.txt .
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    g++ \
-    gcc \
-    libgl1 \
-    libglib2.0-0 \
-    libssl-dev \
-    libpq-dev \
-    libjpeg-dev \
-    zlib1g-dev \
-    libfreetype6-dev \
-    libpng-dev \
-    cmake \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN pip install --user --cache-dir /tmp/pip-cache -r requirements.txt
 
 # Runtime stage
@@ -26,7 +14,7 @@ WORKDIR /app
 
 COPY --from=builder /root/.local /root/.local
 
-COPY app ./app
+COPY app/ .
 
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONPATH=/app

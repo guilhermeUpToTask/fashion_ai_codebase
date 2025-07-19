@@ -10,8 +10,6 @@ import uuid
 from api.deps import SessionDep, CurrentUser, ChromaSessionDep
 from models.image import ImageCreate, ImageDB, ImagePublic, ImageUpdate, StatusEnum
 from core.image_crud import update_image, get_image_by_id
-from core.ingestors import ingest_img
-from core.retriver.img_retriver import retrive_most_similar_img
 
 
 def verify_status(*, img: ImageDB, desired_status: StatusEnum) -> bool:
@@ -39,15 +37,15 @@ async def ingest_image_query(
 ):
     image = get_image_by_id(id=image_id, session=session)
     image = validate_cropped_image(image=image)
-    ingested_info = ingest_img.ingest(img_path=image.path)
+    #ingested_info = ingest_img.ingest(img_path=image.path)
 
     # here we will retrive
     imgs_collection = chroma.get_collection(name="imgs_colletion")
-    similar_img = retrive_most_similar_img(
-        img_vector=ingested_info["img_vector"],
-        label_vector=ingested_info["label_vector"],
-        collection=imgs_collection,
-        session=session,
-    )
+    # similar_img = retrive_most_similar_img(
+    #     img_vector=ingested_info["img_vector"],
+    #     label_vector=ingested_info["label_vector"],
+    #     collection=imgs_collection,
+    #     session=session,
+    # )
     
-    return similar_img
+    return "similar_img"

@@ -11,6 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 import sqlmodel
 
+from models.image import StatusEnum
+
 
 # revision identifiers, used by Alembic.
 revision: str = '33a6a4caa63f'
@@ -28,7 +30,8 @@ def upgrade() -> None:
     sa.Column('width', sa.Integer(), nullable=True),
     sa.Column('height', sa.Integer(), nullable=True),
     sa.Column('format', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('status', sa.Enum('UPLOADED', 'CROPPED', 'EMBEDDED', 'LABELED', 'STORED', name='statusenum'), nullable=False),
+    # Create the Enum using the values from your Python class
+    sa.Column('status', sa.Enum(StatusEnum, name='statusenum', values_callable=lambda obj: [e.value for e in obj]), nullable=False),
     sa.Column('original_id', sa.Uuid(), nullable=True),
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.ForeignKeyConstraint(['original_id'], ['image.id'], ),

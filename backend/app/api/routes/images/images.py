@@ -10,7 +10,7 @@ from sqlalchemy import Delete
 
 # --- Core Application Imports ---
 from api.deps import ChromaSessionDep, SessionDep
-from backend.app.core.vector_db.img_vector_crud import (
+from core.vector_db.img_vector_crud import (
     delete_img_in_collection,
     get_image_data,
     get_images_ids,
@@ -26,10 +26,9 @@ from core import storage
 
 # --- Model & Workflow Imports ---
 from models.image import ImageCreate, ImageDB, ImagePublic, StatusEnum
-from app.worker.pipeline import start_indexing_pipeline
+from worker.pipeline import start_indexing_pipeline
 
 # ---Constants---
-MAX_FILE_SIZE = settings.MAX_IMAGE_SIZE_BYTES
 MAX_RESOLUTION = 4096
 ALLOWED_TYPES = {"image/jpeg", "image/png"}
 
@@ -85,15 +84,15 @@ async def index_new_image(
             status_code=415,
             detail=f"Invalid file type. Allowed types are: {', '.join(ALLOWED_TYPES)}",
         )
-    if content_length > MAX_FILE_SIZE:
+    if content_length > settings.MAX_IMAGE_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // 1024 // 1024}MB.",
+            detail=f"File too large. Maximum size is {settings.MAX_IMAGE_SIZE_BYTES // 1024 // 1024}MB.",
         )
 
     try:
         chunk_size = 1024 * 1024 #1MB
-        img_stream = await read_and_validate_file(img_file=image_file, chunk_size=chunk_size, max_size=MAX_FILE_SIZE)
+        img_stream = await read_and_validate_file(img_file=image_file, chunk_size=chunk_size, max_size=settings.MAX_IMAGE_SIZE_BYTES)
 
         img = Image.open(img_stream)
         img.verify()  # verify integrity
@@ -116,6 +115,8 @@ async def index_new_image(
         #log the error here
         raise HTTPException(status_code=422, detail="Invalid or corrupted image file.")
 
+
+    #this needs to be atomic, if the database create image fails, its reverse the s_3 object, and vice&versa
     s3_object_name = f"originals/{uuid.uuid4().hex}.{file_extension}"
 
     try:
@@ -157,7 +158,7 @@ async def upload_single_img(
     if image_file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Invalid file type")
 
-    if content_length > MAX_FILE_SIZE:
+    if content_length > settings.MAX_IMAGE_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="File too large")
 
     safe_filename = f"{uuid.uuid4().hex}_{image_file.filename}"  # later we see the need to sanataze the filename
@@ -168,7 +169,7 @@ async def upload_single_img(
 
     while chunk := await image_file.read(chunk_size):  # chunk reading
         size += len(chunk)
-        if size > MAX_FILE_SIZE:
+        if size > settings.MAX_IMAGE_SIZE_BYTES:
             raise HTTPException(status_code=400, detail="File too large")
         img_stream.write(chunk)
 

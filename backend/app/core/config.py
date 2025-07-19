@@ -27,9 +27,7 @@ class Settings(BaseSettings):
     ADMIN_USER: str
     ADMIN_PASSWORD: str
     ML_SERVICE_URL: str
-    IMGS_DIR: str
-    CROPPED_IMGS_DIR: str = "/cloth_crops"
-    IMAGES_COLLECTION_NAME="images_collection"
+    IMAGES_COLLECTION_NAME: str = "images_collection"
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     CELERY_BROKER_URL: str
@@ -40,7 +38,7 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str
     S3_PRODUCT_BUCKET_NAME: str
     
-    MAX_IMAGE_SIZE_BYTES: int = 10240 # 5mb
+    MAX_IMAGE_SIZE_BYTES: int = 5 * 1024 * 1024 # 5mb
     
     @computed_field  # type: ignore[prop-decorator]
     @property

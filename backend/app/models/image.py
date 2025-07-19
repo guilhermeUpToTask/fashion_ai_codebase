@@ -1,11 +1,11 @@
 from enum import Enum
 import uuid
-from sqlmodel import JSON, Relationship, SQLModel, Field
-from pydantic import field_validator
+from sqlmodel import JSON, Relationship, SQLModel, Field, Column
+from pydantic import ConfigDict, field_validator
 from pathlib import Path
 from typing import List, Optional, Union
 from models.label import StructuredLabel
-
+from sqlalchemy import Enum as SAEnum
 
 class StatusEnum(str, Enum):  # < needs to change the satatus for a better one
     UPLOADED = "uploaded"
@@ -21,6 +21,8 @@ class StatusEnum(str, Enum):  # < needs to change the satatus for a better one
 
 
 class ImageBase(SQLModel):
+    model_config = ConfigDict(use_enum_values=True) # type: ignore
+    
     path: str = Field(..., description="S3 storage object path to the image")
     filename: str
     label: StructuredLabel | None = Field(
@@ -46,11 +48,11 @@ class ImageBase(SQLModel):
 class ImageDB(ImageBase, table=True):
     __tablename__ = "image"  # type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    label: Optional[StructuredLabel] = Field(default=None, sa_column=Column(JSON))
     original: Optional["ImageDB"] = Relationship(
         back_populates="crops", sa_relationship_kwargs={"remote_side": "ImageDB.id"}
     )
     crops: List["ImageDB"] = Relationship(back_populates="original")
-
 
 class ImageCreate(ImageBase):
     pass

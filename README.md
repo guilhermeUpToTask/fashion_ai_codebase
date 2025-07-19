@@ -3,7 +3,7 @@ needs to puts all the ml processing to the stateless ml service
 integrating validation, background thumbnail generation, or cloud storage!
 
 denial-of-service attacks via large files.
-
+Needs docker resource limits policy setted in the ec2 instance
 
 Prioritized Action List
 Manual delete the failed crops
