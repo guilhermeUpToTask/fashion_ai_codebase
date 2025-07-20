@@ -1,6 +1,6 @@
 from enum import Enum
 import uuid
-from sqlmodel import JSON, Relationship, SQLModel, Field, Column
+from sqlmodel import JSON, CheckConstraint, Relationship, SQLModel, Field, Column, String
 from pydantic import ConfigDict, field_validator
 from pathlib import Path
 from typing import List, Optional, Union
@@ -10,7 +10,7 @@ from sqlalchemy import Enum as SAEnum
 class StatusEnum(str, Enum):  # < needs to change the satatus for a better one
     UPLOADED = "uploaded"
     QUEUED = "queued"
-    CROPPING = "croppping"
+    CROPPING = "cropping"
     ANALYZING = "analyzing"
     CROPPED = "cropped"
     LABELLED = "labelled"
@@ -49,6 +49,19 @@ class ImageDB(ImageBase, table=True):
     __tablename__ = "image"  # type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     label: Optional[StructuredLabel] = Field(default=None, sa_column=Column(JSON))
+    status: StatusEnum = Field(
+        sa_column=Column(
+            String(20),
+            CheckConstraint(
+                # Update this constraint with new values
+                f"status IN ({', '.join(repr(s.value) for s in StatusEnum)})",
+                name="check_status_enum"
+            ),
+            nullable=False
+        ),
+        description="Process status of the image",
+    )
+    
     original: Optional["ImageDB"] = Relationship(
         back_populates="crops", sa_relationship_kwargs={"remote_side": "ImageDB.id"}
     )
