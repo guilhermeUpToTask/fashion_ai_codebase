@@ -88,17 +88,3 @@ class ImageDelete:
     id: uuid.UUID
 
 
-class ProductImage:
-    pass
-
-
-class ProductImageDB:
-    pass
-
-
-class ProductImageCreate:
-    pass
-
-
-class ProductImageDelete:
-    pass

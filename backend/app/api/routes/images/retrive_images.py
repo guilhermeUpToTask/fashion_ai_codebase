@@ -7,9 +7,12 @@ from PIL import Image
 from typing import Annotated, Any, List
 from fastapi import APIRouter, Depends, File, HTTPException, Header, UploadFile
 import uuid
+
+import numpy as np
 from api.deps import SessionDep, CurrentUser, ChromaSessionDep
+from backend.app.core.vector_db.img_vector_crud import delete_img_in_collection, get_image_data, get_images_ids
 from models.image import ImageCreate, ImageDB, ImagePublic, ImageUpdate, StatusEnum
-from core.image_crud import update_image, get_image_by_id
+from core.image_crud import get_image_list_by_ids, update_image, get_image_by_id
 
 
 def verify_status(*, img: ImageDB, desired_status: StatusEnum) -> bool:
@@ -28,7 +31,8 @@ def validate_cropped_image(image: ImageDB | None) -> ImageDB:
 
     return image
 
-
+# we will try a different pipeline of tasks, where will be using the croping and labeling pipeline of the query cloths,and add new task in the place of saving, will be querring, and to finalize will group all similar products and return its ids
+#we will use a new query model to store the similar products, and later that what we will use with the agentic model to chose best matching product.
 @router.post("/query")
 async def ingest_image_query(
     session: SessionDep,
@@ -49,3 +53,60 @@ async def ingest_image_query(
     # )
     
     return "similar_img"
+
+
+@router.get("/vector")
+def get_imgs_in_vector_db(
+    session: SessionDep, chroma: ChromaSessionDep
+) -> list[ImagePublic]:
+    imgs_collection = chroma.get_collection(name="imgs_colletion")
+    imgs_ids = get_images_ids(collection=imgs_collection)
+    imgs_data = get_image_list_by_ids(ids_list=imgs_ids, session=session)
+    if not imgs_data:
+        raise HTTPException(status_code=404, detail="No images found in the vector db")
+    imgs_out = [ImagePublic.model_validate(img) for img in imgs_data]
+    return imgs_out
+
+
+@router.get("/vector/{img_id}")
+async def get_image_vector_by_id(
+    session: SessionDep, chroma_session: ChromaSessionDep, img_id: uuid.UUID
+):
+    # 1. Retrieve image from DB
+    img = get_image_by_id(id=img_id, session=session)
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # 2. Get ChromaDB collection
+    image_collection = chroma_session.get_collection(name="imgs_colletion")
+
+    # 3. Retrieve image vector & metadata from Chroma
+    img_in_chroma = get_image_data(img_id=img_id, collection=image_collection)
+
+    if not img_in_chroma or not img_in_chroma.get("ids"):
+        raise HTTPException(
+            status_code=404, detail="Image vector not found in ChromaDB"
+        )
+
+    img_vector = None
+    if img_in_chroma and img_in_chroma.get("embeddings") is not None:
+        if (
+            isinstance(img_in_chroma["embeddings"], np.ndarray)
+            and img_in_chroma["embeddings"].size > 0
+        ):
+            img_vector = img_in_chroma["embeddings"][0].tolist()
+
+    return {"image": img, "image_vector": img_vector}
+
+
+@router.delete("/vector/{img_id}")
+async def delete_img_in_vector_db(
+    session: SessionDep, chroma: ChromaSessionDep, img_id: uuid.UUID
+):
+    collection = chroma.get_collection(name="imgs_colletion")
+    img = get_image_by_id(id=img_id, session=session)
+    if not img:
+        raise HTTPException(status_code=404, detail="No image found with this id")
+
+    delete_img_in_collection(img_id=img.id, collection=collection)
+    return img

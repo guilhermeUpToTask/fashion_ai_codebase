@@ -23,8 +23,8 @@ services:
             placement:
                 constraints:
                     - node.role == manager
-            labels:
-                - traefik.enable=false
+        labels:
+            - traefik.enable=false
 
     postgres:
         image: postgres:16 # lets check alpine version later
@@ -46,9 +46,7 @@ services:
             interval: 10s
             timeout: 5s
             retries: 5
-        deploy:
-            replicas: 1
-            labels:
+        labels:
                 - traefik.enable=false
 
     redis:
@@ -81,8 +79,7 @@ services:
             interval: 30s
             timeout: 20s
             retries: 3
-        deploy:
-            labels:
+        labels:
                 - "traefik.enable=false" #not expose directly. accessed via SDK
     #service to create minIO buckets on startup
     create-buckets:
@@ -175,7 +172,7 @@ services:
             context: ./backend
             dockerfile: Dockerfile
         container_name: fashion_celery_worker
-        command: celery -A celery_app:app worker -l info -Q default -c 1 # Concurrency 1
+        command: celery -A celery_app:app worker --loglevel=info -E
         volumes:
             - ./backend/app:/app
         environment:
@@ -203,16 +200,55 @@ services:
             - backend_api #ensure build context is shared, dependes on DB/REDIS implicitly
             - redis
             - postgres
+            - chroma_db
         networks:
             - app-network
-        deploy:
-            labels:
+        labels:
                 - "traefik.enable=false" #worker is not a web service but a midleman betwen the backend and ml service
+    flower:
+        image: mher/flower
+        container_name: flower
+        command: celery --broker=redis://redis:6379/0 flower --port=5555
+        networks:
+        - app-network
+        depends_on:
+            - redis  # or your actual broker service
+            - worker
+        labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.flower.rule=Host(`flower.docker.localhost`)"  
+        - "traefik.http.routers.flower.entrypoints=web"
+        - "traefik.http.services.flower.loadbalancer.server.port=5555"
+
+    chroma_db:
+        build:
+            context: ./chroma_db/
+            dockerfile: Dockerfile
+        container_name: chroma_db_server
+        environment:
+        - CHROMA_DB_IMPL=duckdb+parquet  # Example setting, configure as needed
+        # Add other environment variables as needed, e.g.:
+        # - CHROMA_SETTINGS=...
+        volumes:
+        - chroma_data:/chroma_db/db  # Persist data here
+        healthcheck:
+            test: ["CMD-SHELL", "curl -f http://localhost:8000/docs || exit 1"] # change later for /api/v2/healthcheck
+            interval: 10s
+            timeout: 10s
+            retries: 3
+        networks:
+        - app-network
+        labels:
+            - "traefik.enable=true"
+            - "traefik.http.routers.chroma_db.rule=Host(`chroma_db.docker.localhost`)"
+            - "traefik.http.routers.chroma_db.entrypoints=web"
+            - "traefik.http.services.chroma_db.loadbalancer.server.port=8000"
 
 #Database Volume
 volumes:
     pgdata:
     minio_data:
+    chroma_data:
 
 #NetWork
 networks:

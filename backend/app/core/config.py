@@ -37,7 +37,6 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY: str
     S3_SECRET_KEY: str
     S3_PRODUCT_BUCKET_NAME: str
-    
     MAX_IMAGE_SIZE_BYTES: int = 5 * 1024 * 1024 # 5mb
     
     @computed_field  # type: ignore[prop-decorator]
