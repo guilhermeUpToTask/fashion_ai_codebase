@@ -23,6 +23,7 @@ from core.config import settings # noqa
 from sqlmodel import SQLModel
 from models.user import User
 from models.image import ImageDB
+from models.query import QueryImage, QuerySimilarProduct
 # Import all models to ensure they are registered with SQLModel
 
 # Target metadata for Alembic

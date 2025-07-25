@@ -10,7 +10,7 @@ from chromadb.api import ClientAPI
 from sqlmodel import Session
 
 # import torch
-from backend.app.models.query import QuerySimilarProduct
+from models.query import QuerySimilarProduct
 from models.label import StructuredLabel
 
 logger = logging.getLogger(__name__)

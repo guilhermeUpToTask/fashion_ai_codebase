@@ -10,7 +10,8 @@ import uuid
 
 import numpy as np
 from api.deps import SessionDep, CurrentUser, ChromaSessionDep
-from backend.app.core.vector_db.img_vector_crud import delete_img_in_collection, get_image_data, get_images_ids
+from core.config import Settings
+from core.vector_db.img_vector_crud import delete_img_in_collection, get_image_data, get_images_ids
 from models.image import ImageCreate, ImageDB, ImagePublic, ImageUpdate, StatusEnum
 from core.image_crud import get_image_list_by_ids, update_image, get_image_by_id
 
@@ -72,16 +73,10 @@ def get_imgs_in_vector_db(
 async def get_image_vector_by_id(
     session: SessionDep, chroma_session: ChromaSessionDep, img_id: uuid.UUID
 ):
-    # 1. Retrieve image from DB
     img = get_image_by_id(id=img_id, session=session)
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
-
-    # 2. Get ChromaDB collection
-    image_collection = chroma_session.get_collection(name="imgs_colletion")
-
-    # 3. Retrieve image vector & metadata from Chroma
-    img_in_chroma = get_image_data(img_id=img_id, collection=image_collection)
+    img_in_chroma = get_image_data(img_id=img_id, chroma_session=chroma_session, collection_name=Settings.IMAGES_COLLECTION_NAME)
 
     if not img_in_chroma or not img_in_chroma.get("ids"):
         raise HTTPException(

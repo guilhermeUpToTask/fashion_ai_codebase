@@ -55,7 +55,7 @@ def start_querying_pipeline(img_id: UUID) -> str | None:
     workflow = chain(
         celery_app.signature("tasks.crop_image_task", kwargs={"job_id": str(img_id)}),
         celery_app.signature(
-            "tasks.split_for_querying", kwargs={"job_id": str(img_id)}
+            "tasks.split_for_querying_task", kwargs={"job_id": str(img_id)}
         ),
     )
     

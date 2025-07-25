@@ -6,7 +6,7 @@ from uuid import UUID
 from celery import chain, group, Task
 import requests
 from sqlmodel import Session
-from backend.app.models.query import QueryImage, QuerySimilarProduct
+from models.query import QueryImage, QuerySimilarProduct
 from celery_app import app as celery_app
 from core import storage
 from core.vector_db.img_vector_crud import add_image_embedding
