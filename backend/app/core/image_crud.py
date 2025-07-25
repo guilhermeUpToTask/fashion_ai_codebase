@@ -1,6 +1,8 @@
 from typing import List
 import uuid
-from sqlmodel import Session, select
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, select, col
+from models.query import QueryImage
 from models.image import ImageCreate, ImageDB, ImageUpdate, StatusEnum
 from sqlmodel import col
 
@@ -57,6 +59,17 @@ def update_job_status(
         
     return update_image(session=session, image_in=update_data, db_image=job_image)
     
+def get_query_image_by_id(*, session: Session, query_id: uuid.UUID) -> QueryImage | None:
+    """
+    Retrieves a QueryImage by its ID, eagerly loading its similar_products.
+    """
+    statement = (
+        select(QueryImage)
+        .where(QueryImage.id == query_id)
+        .options(selectinload(getattr(QueryImage, "similar_products"))) # Eagerly load relationship
+    )
+    result = session.exec(statement).first()
+    return result
 
 
 def delete_image(id: int, session: Session):

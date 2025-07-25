@@ -4,14 +4,14 @@ from PIL import Image
 from typing import Annotated
 from fastapi import APIRouter, File, HTTPException, Header, UploadFile
 import uuid
-from celery.result import AsyncResult
+from models.query import QueryImagePublic
 from worker.tasks import add
 from celery_app import app as celery_app
 import numpy as np
 from sqlalchemy import Delete
 
 # --- Core Application Imports ---
-from api.deps import ChromaSessionDep, SessionDep
+from api.deps import ChromaSessionDep, CurrentUser, SessionDep
 from core.vector_db.img_vector_crud import (
     delete_img_in_collection,
     get_image_data,
@@ -23,6 +23,7 @@ from core.image_crud import (
     get_image_by_id,
     get_image_list,
     get_image_list_by_ids,
+    get_query_image_by_id,
 )
 from core import storage
 
@@ -162,6 +163,26 @@ async def index_new_image(
 
     # return the initial public model of the job, and the 202 accepted status code.
     return ImagePublic.model_validate(image_db)
+
+
+@router.get("/query/{query_id}", response_model=QueryImagePublic)
+def get_query_results(
+    *,
+    session: SessionDep,
+    query_id: uuid.UUID,
+) -> QueryImagePublic:
+    """
+    Retrieve the results of a specific image query by its ID.
+    """
+    query_db = get_query_image_by_id(session=session, query_id=query_id)
+
+    if not query_db:
+        raise HTTPException(
+            status_code=404,
+            detail="Query not found.",
+        )
+    return QueryImagePublic.model_validate(query_db)
+
 
 @router.post("/query", response_model=ImagePublic, status_code=202)
 async def query_new_image(

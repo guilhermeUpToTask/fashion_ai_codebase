@@ -303,13 +303,15 @@ def save_image_vector_task(
         logger.info(
             f"[Job {job_id}][Crop {cropped_img_id}] → Embedding preview: {storage_vector[:5]}"
         )
-        logger.info(f"[Job {job_id}][Crop {cropped_img_id}] → entering add_image_embedding")
-    
+        logger.info(
+            f"[Job {job_id}][Crop {cropped_img_id}] → entering add_image_embedding"
+        )
+
         try:
             label_obj = cropped_img_metadata.label
             if isinstance(label_obj, dict):
                 label_obj = StructuredLabel(**label_obj)
-                
+
             stored_img_id = add_image_embedding(
                 img_id=cropped_img_id,
                 img_vector=storage_vector,
@@ -325,7 +327,7 @@ def save_image_vector_task(
                 str(e),
             )
             raise e
-        
+
         if stored_img_id != cropped_img_metadata.id:
             raise ValueError(
                 f"Critical error, ids mismatch - cropped_img_id:{cropped_img_id} stored_img_id:{stored_img_id}"
@@ -344,26 +346,40 @@ def save_image_vector_task(
 
     return cropped_img_id
 
+
 @celery_app.task(
     name="tasks.query_image_vector_task", bind=True
 )  # bind gets acces to 'self'
 def query_image_vector_task(
     self,
     query_vector: list[float],  # <-- This MUST be the first
-    job_id: UUID, # <- just for logging
+    job_id: UUID,  # <- just for logging
     cropped_img_id: UUID,
     current_cropped_idx: int,
     collection_name: str,
-) -> QueryImage:
+) -> UUID:
     chroma_client = chroma_client_wrapper.get_client()
+    query_id: UUID | None = None 
     with Session(engine) as session:
-        query = QueryImage(input_image_id=cropped_img_id, model_version="yolo8-fashionCLIP")
-        query.similar_products = query_similar_imgs(query_vector=query_vector, n_results=3,collection_name=collection_name, chroma_session=chroma_client)
+        query = QueryImage(
+            input_image_id=cropped_img_id, model_version="yolo8-fashionCLIP"
+        )
+        query.similar_products = query_similar_imgs(
+            query_vector=query_vector,
+            n_results=3,
+            collection_name=collection_name,
+            chroma_session=chroma_client,
+        )
         session.add(query)
         session.commit()
-    return query
+        query_id = query.id
+        
+    if not query_id:
+        raise ValueError("Failed to create and retrieve QueryImage ID from the database.")
+    return query_id
 
-#this is wrong in the case of a empty array
+
+# this is wrong in the case of a empty array
 @celery_app.task(name="tasks.finalize_indexing_job_task")
 def finalize_indexing_job_task(results, job_id: UUID):
     # results is the output of the group (list of crop IDs that were saved)
@@ -417,35 +433,40 @@ def split_for_indexing_task(cropped_img_ids: list[UUID], job_id: UUID):
 
 @celery_app.task(name="tasks.split_for_querying_task")
 def split_for_querying_task(cropped_img_ids: list[UUID], job_id: UUID):
-    logger.info(f"Spliting job {job_id} into {len(cropped_img_ids)} paralell tasks for querying")
+    logger.info(
+        f"Spliting job {job_id} into {len(cropped_img_ids)} paralell tasks for querying"
+    )
     finalize_querying = cast(Task, finalize_querying_job_task)
     if not cropped_img_ids:
-        finalize_querying_job_task.apply_async(kwargs={"results": [], "job_id": job_id}) #type: ignore
+        finalize_querying_job_task.apply_async(kwargs={"results": [], "job_id": job_id})  # type: ignore
     label_image = cast(Task, label_image_task)
     query_image = cast(Task, query_image_vector_task)
 
     header = group(
         (
-            label_image.s(
-                job_id=job_id, cropped_img_id=img_id, current_cropped_idx=idx
-            ),
-            query_image.s(
-                job_id=job_id,
-                cropped_img_id = img_id,
-                current_cropped_idx = idx,
-                collection_name = settings.IMAGES_COLLECTION_NAME
-            ),
+            chain(
+                label_image.s(
+                    job_id=job_id, cropped_img_id=img_id, current_cropped_idx=idx
+                ),
+                query_image.s(
+                    job_id=job_id,
+                    cropped_img_id=img_id,
+                    current_cropped_idx=idx,
+                    collection_name=settings.IMAGES_COLLECTION_NAME,
+                ),
+            )
         )
         for idx, img_id in enumerate(cropped_img_ids)
     )
     (header | finalize_querying.s(job_id=job_id)).apply_async()
-    
 
 
 @celery_app.task(name="tasks.finalize_querying_job_task")
 def finalize_querying_job_task(results, job_id: UUID):
     # results is the output of the group (list of crop IDs that were saved)
-    logger.info(f"Finalizing job {job_id}. {len(results)} items processed for querying.")
+    logger.info(
+        f"Finalizing job {job_id}. {len(results)} items processed for querying."
+    )
     with Session(engine) as session:
         job_img = get_image_by_id(id=job_id, session=session)
         if not job_img:
