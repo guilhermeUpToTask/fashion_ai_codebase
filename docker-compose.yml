@@ -230,7 +230,7 @@ services:
         # Add other environment variables as needed, e.g.:
         # - CHROMA_SETTINGS=...
         volumes:
-        - chroma_data:/chroma_db/db  # Persist data here
+        - chroma_data:/data  # Persist data here
         healthcheck:
             test: ["CMD-SHELL", "curl -f http://localhost:8000/docs || exit 1"] # change later for /api/v2/healthcheck
             interval: 10s
