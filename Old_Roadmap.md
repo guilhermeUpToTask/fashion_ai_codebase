@@ -9,9 +9,9 @@ Prioritized Action List
 Manual delete the failed crops
 Test Retriver function with a image
 Refactor ML Pipeline (High Priority): - checked
-Introduce a task queue (Celery) and message broker (Redis). - pendent
+Introduce a task queue (Celery) and message broker (Redis). - check
 Move all crop_img and ingest_img calls to asynchronous background workers. - checked - its on service ml
-Modify API endpoints to enqueue jobs and return a job ID.
+Modify API endpoints to enqueue jobs and return a job ID. - check
 Implement Singleton Model Loading (High Priority): - checked - needs testing and maybe changed the loading for a expliciti one in the app/main.py
 Refactor the application to load all ML models (YOLO, CLIP) only once at worker startup. - checked - same as above
 Pre-compute and cache label embeddings at startup. - pendent
@@ -24,19 +24,17 @@ Fix Dependency Management (Medium Priority):
 Address Security Vulnerabilities (Medium Priority):
 Sanitize all user-provided filenames.
 Configure stricter CORS policies for staging/production environments.
-Improve Data and Storage Layers (Medium Priority):
-Abstract file storage to support a cloud provider (e.g., S3).
+Improve Data and Storage Layers (Medium Priority): checked
+Abstract file storage to support a cloud provider (e.g., S3). - checked
 Refactor the hardcoded label generation to be more structured and semantic. - checked
-Improve Documentation (Low Priority):
-Write a comprehensive README.md with setup and usage instructions.
+Improve Documentation (Low Priority): pendent
+Write a comprehensive README.md with setup and usage instructions. - checked
 
-Based on your current architecture (upload -> crop -> ingest/label -> store), here are concrete, prioritized suggestions to dramatically increase accuracy.
-Summary: The Accuracy Strategy
-Your goal is to reduce "Garbage In, Garbage Out." The accuracy of your final stored data is a product of the accuracy at each preceding step. We will improve it by:
 Filtering Garbage: Prevent bad crops from ever reaching the labeling model.
-Smarter Labeling: Change how you ask the model to generate labels.
-Providing Context: Help the system understand the primary product in an image.
+Smarter Labeling: Change how you ask the model to generate labels. - checked
+Providing Context: Help the system understand the primary product in an image. - pendent
 Creating a Feedback Loop: Build a mechanism to correct errors and retrain models.
+
 1. Improve the Cropping Stage (Filter the Garbage)
 This is the most critical step. A perfect labeling model will still fail if you feed it a picture of a human foot and ask it to identify a piece of clothing.
 Problem: The YOLO model produces low-quality and irrelevant crops (skin, background, partial items).
@@ -85,6 +83,7 @@ You can use simple text similarity (e.g., does the product_name contain the crop
 The crop with the highest similarity score is marked as the is_primary=True item. The others are is_primary=False.
 Prioritize the Primary Vector: When creating the final vector for recommendations, you can give more weight to the primary item's vector.
 Result: Your database now distinguishes between the main product and other clothing items that happen to be in the photo, preventing recommendation pollution.
+This filtering should be happening in the storing task. before storing the cloth.only the primary will be saved into the vector db.
 4. Create a Data-Quality Flywheel (Human-in-the-Loop)
 Problem: No ML model is perfect. You need a way to correct its mistakes and use those corrections to make the model better over time.
 Solution: Build a Simple Correction UI
@@ -96,5 +95,3 @@ When the admin saves the correction, you update the record in your database.
 The Flywheel Effect:
 Immediate Benefit: The accuracy of your stored data is now perfect for every item a human has reviewed.
 Long-Term Benefit: You are building a high-quality, human-verified dataset. After correcting a few thousand images, you can use this dataset to fine-tune your models (both the cropper and the labeler), drastically improving the baseline accuracy for all future uploads. This is how you achieve state-of-the-art performance.
-
-Create the lifespan manager
