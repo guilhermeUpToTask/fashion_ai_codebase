@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy import CheckConstraint
 from sqlmodel import SQLModel, Field, Column, String
-
+from pydantic import ConfigDict
 
 class JobType(str, Enum):
     INDEXING = "indexing"
@@ -13,14 +13,19 @@ class JobType(str, Enum):
 
 class JobStatus(str, Enum):
     QUEUED = "queued"
-    RUNNING = "running"
-    COMPLETE = "complete"
+    STARTED = "started"
+    DETECTING = "detecting"
+    LABELLING = "labelling"
+    QUERYING = "querying"
+    COMPLETED = "completed"
     FAILED = "failed"
 
 
 class Job(SQLModel, table=True):
+    model_config = ConfigDict(use_enum_values=True) # type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    input_image_id: uuid.UUID = Field(foreign_key="image.id")
+    input_img_id: uuid.UUID = Field(foreign_key="image.id")
+    input_product_id : uuid.UUID | None = Field(foreign_key="product.id")
     type: JobType = Field(
         sa_column=Column(
             String(20),

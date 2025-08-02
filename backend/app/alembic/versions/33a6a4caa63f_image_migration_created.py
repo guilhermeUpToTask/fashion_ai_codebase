@@ -9,7 +9,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 import sqlmodel
-from models.image import StatusEnum
+from backend.app.models.image import StatusEnum
 
 # revision identifiers, used by Alembic.
 revision: str = '33a6a4caa63f'

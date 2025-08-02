@@ -3,483 +3,413 @@ from io import BytesIO
 import time
 from typing import List, cast
 from uuid import UUID
-from celery import chain, group, Task
+import uuid
+from celery import Task, chain, chord, group
+from celery.canvas import Signature
+from psycopg2 import IntegrityError
 import requests
-from sqlmodel import Session
+from sqlmodel import Session, select
+from backend.app.models.job import Job, JobStatus, JobType
+from backend.app.models.product import Product, ProductImage
+from backend.app.models.result import IndexingResult, QueryResult
 from models.query import QueryImage, QuerySimilarProduct
 from celery_app import app as celery_app
 from core import storage
 from core.vector_db.img_vector_crud import add_image_embedding
-from models.image import ImageDB, ImageUpdate, StatusEnum, ImageCreate
+from backend.app.models.image import ImageFile
 from models.label import LabelingResponse, StructuredLabel
 from core.vector_db.chroma_db import chroma_client_wrapper
 from core.vector_db.img_vector_crud import query_similar_imgs
 from core.db import engine
-from core.image_crud import (
-    update_image,
-    update_job_status,
-    get_image_by_id,
-    create_image,
-)
 from core.config import settings
+from utils.image_helpers import (
+    build_image_filename,
+    create_and_verify_pil_img,
+    send_s3_img_to_service,
+)
+from utils.helpers import parse_json_response, safe_post_and_parse
 import mimetypes
 import base64
 import logging
+from pydantic import BaseModel, ValidationError 
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(bind=True)
-def add(self, x, y):
-    return x + y
-
-
-# Helper Functions
-def send_s3_img_to_ml_service(
-    img_filename: str, bucket_name: str, service_url: str, timeout: int = 30
-) -> requests.Response:
-    """Downloads an image from S3 and send its to an ML service."""
-    img_file = storage.download_file_from_s3(bucket=bucket_name, key=img_filename)
-    mime_type, _ = mimetypes.guess_type(img_filename)
-    files = {
-        "img_file": (img_filename, img_file, mime_type or "application/octet-stream")
-    }
-    response = requests.post(url=service_url, files=files, timeout=timeout)
-    return response
-
-
-def parse_and_retry(response: requests.Response, task: Task, expected_type=list):
-    """
-    Parse JSON payload from a requests.Response and retry on failure.
-
-    Args:
-        response (requests.Response): HTTP response to parse.
-        task (celery.Task): Bound Celery task instance (self) for retry.
-        expected_type (type): Expected Python type of the JSON payload.
-
-    Returns:
-        The parsed JSON payload if it matches expected_type.
-
-    Raises:
-        Retry exception via task.retry if parsing fails or type mismatches.
-    """
-    try:
-        payload = response.json()
-        if not isinstance(payload, expected_type):
-            raise ValueError(
-                f"Expected {expected_type.__name__} got {type(payload).__name__}"
-            )
-        return payload
-    except (ValueError, requests.JSONDecodeError) as err:
-        logger.error("Malformed response from ML service", exc_info=True)
-        # retry the taks with the original exception
-        raise task.retry(
-            exc=err
-        )  # maybe we need to add this to the autoretry for in the task
-
-
-# ---CELERY TASKS ---
-@celery_app.task(
-    name="tasks.crop_image_task",
-    bind=True,
-    autoretry_for=([requests.RequestException]),
-    retry_backoff=True,
-    retry_kwargs={"max_retries": 5},
-)  # bind gets acces to 'self'
-def crop_image_task(self, job_id: UUID) -> list[UUID]:
-    """_summary_
-
-    Args:
-        job_id (UUID): the id of the main image uploaded
-
-    Task to crop an original image
-    """
+# celery tasks
+# needs retry logic
+@celery_app.task(name="task.cloth_detection_task", bind=True)
+def cloth_detection_task(self, img_id: UUID) -> list[UUID]:
+    logger.info(f"Starting cloth detection task for img_id={img_id}")
     with Session(engine) as session:
         try:
-            logger.info(f"Starting crop image task for job:{job_id}")
-            job_img = get_image_by_id(id=job_id, session=session)
-            if not job_img:
-                raise ValueError("No job image was found")
+            with session.begin():
+                img_metadata = session.get(ImageFile, img_id)
+                if not img_metadata:
+                    raise ValueError(f"No image metadata found for id={img_id}")
 
-            update_job_status(
-                session=session,
-                job_image=job_img,
-                new_status=StatusEnum.CROPPING,
-                details="Step 1 of 3: Decting clothing items...",
-            )
-
-            logger.info(f"Sending request to ml service for job:{job_id}")
-
-            # sending image to cropping process - needs retry logic
-            response = send_s3_img_to_ml_service(
-                img_filename=job_img.filename,
-                bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
-                service_url=f"{settings.ML_SERVICE_URL}/inference/image/crop_clothes",
-                timeout=20,
-            )
-            response.raise_for_status()
-
-            logger.info(
-                f"request succeffuly made it to service to crop cloth pieces. job:{job_id}"
-            )
-            logger.info(f"Starting to parse the cloth images recived. job:{job_id}")
-
-            # parse the response
-            b64_images: list[str] = parse_and_retry(
-                response=response, task=self, expected_type=list
-            )
-            logger.info(f"{len(b64_images)} cloth pieces scanned. job:{job_id}")
-
-            cropped_img_ids: list[UUID] = []
-            for idx, b64_str in enumerate(b64_images):
-                # decode and convert base64 to BytesIO in memory
-                img_file = BytesIO(base64.b64decode(b64_str))
-                # determinincstic s3 key
-                img_filename = f"cropped_img_{idx}_{job_id}.png"
-                s3_path = storage.upload_file_to_s3(
-                    file_obj=img_file,
+                logger.info("Calling ML service for cloth detection")
+                ml_service_res = send_s3_img_to_service(
+                    img_filename=img_metadata.filename,
                     bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
-                    object_name=img_filename,
+                    service_url=f"{settings.ML_SERVICE_URL}/inference/image/crop_clothes",
                 )
+                cloth_imgs_encoded: List[str] = parse_json_response(
+                    response=ml_service_res, expected_type=List[str]
+                )
+                if not cloth_imgs_encoded:
+                    raise ValueError("No cloths found")
+
                 logger.info(
-                    f"{idx} image file saved of {len(b64_images)}. img_path:{s3_path}, job:{job_id}"
+                    f"Processing {len(cloth_imgs_encoded)} detected cloth crops"
                 )
+                for idx, img_encoded in enumerate(cloth_imgs_encoded):
+                    cloth_img_file = BytesIO(base64.b64decode(img_encoded))
+                    cloth_img = create_and_verify_pil_img(
+                        img_bytes=cloth_img_file, logger=logger
+                    )
+                    img_filename = build_image_filename(
+                        img=cloth_img, idx=idx, prefix="cloth"
+                    )
+                    s3_path = storage.upload_file_to_s3(
+                        file_obj=cloth_img_file,
+                        bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
+                        object_name=img_filename,
+                    )
 
-                # create a imagedb for each crop - addl later atomacy db with transactions or session.begin
-                # If the ML service returns the same bad payload repeatedly, exponential retries will repeat until max, which is fine. But if you retry after having already saved some crops, the task will duplicate records.
-                # Suggestion: Before creating a new crop image, check if one for this job_id and this index already exists—skip or update instead of blindly inserting duplicates.
-                img_in = ImageCreate(
-                    path=s3_path,
-                    filename=img_filename,
-                    status=StatusEnum.CROPPED,
-                    original_id=job_img.id,
-                )
-                new_img = create_image(session=session, image_in=img_in)
+                    cloth_crop_metadata = ImageFile(
+                        path=s3_path,
+                        filename=img_filename,
+                        width=cloth_img.width,
+                        height=cloth_img.height,
+                        format=cloth_img.format,
+                        original_id=img_metadata.id,  # link back to original
+                    )
+                    # Append to parent image's crops relationship
+                    img_metadata.crops.append(cloth_crop_metadata)
 
-                cropped_img_ids.append(new_img.id)
+                session.add(img_metadata)
                 logger.info(
-                    f"{idx} image metadata save into db from ${len(b64_images)}. job:{job_id}"
+                    f"Successfully added {len(cloth_imgs_encoded)} crops for image {img_id}"
                 )
+                return [crop.id for crop in img_metadata.crops]
 
-            logger.info(f"all crop images saved succefully. job:{job_id}")
-            update_job_status(
-                session=session,
-                job_image=job_img,
-                new_status=StatusEnum.CROPPED,
-                details="Step 1 of 2: Cloth Items Detected and Cropped.",
-            )
-            logger.info("crop image task finished!")
-
-            return cropped_img_ids
+        # later we will use a retry logic here
+        except IntegrityError as e:
+            logger.error(f"IntegrityError in cloth detection task occurred: {e}")
+            raise
+        except ValidationError as e:
+            logger.error(f"ValidationError in cloth detection task occurred: {e}")
+            raise
         except Exception as e:
-            logger.error(f"[{job_id}] Error while cropping image", exc_info=True)
-            raise e
+            logger.error(f"Unexpected error occurred: {e}", exc_info=True)
+            raise
 
 
-@celery_app.task(name="tasks.label_image_task", bind=True)  # bind gets acces to 'self'
-def label_image_task(
-    self, job_id: UUID, cropped_img_id: UUID, current_cropped_idx: int
-) -> List[
-    float
-]:  # < return the vector that will be insert into the first arg of the save vector task
-    """_summary_
+class LabelImgResult(BaseModel):
+    img_id: UUID
+    label: StructuredLabel
+    img_vector: List[float]  # adjust type as needed
 
-    Args:
-        job_id (UUID): the id of the main image uploaded
-        cropped_img_id (UUID): the id of the cropped image
-    Task to label a cropped image of a cloth piece and gets the final vector representation.
-    """
+
+@celery_app.task(name="task.label_img_task", bind=True)
+def label_img_task(self, img_id: UUID) -> LabelImgResult:
+    logger.info(f"Starting labeling task for img_id={img_id}")
     with Session(engine) as session:
-        job_img_metadata = get_image_by_id(id=job_id, session=session)
-        cropped_img_metadata = get_image_by_id(id=cropped_img_id, session=session)
-
-        if not job_img_metadata:
-            raise ValueError(f"No job image metadata found for this job_id:{job_id}")
-        if not cropped_img_metadata:
-            raise ValueError(
-                f"No cropped image metadata found for this cropp_img_id:{cropped_img_id}"
-            )
-
-        job_img_metadata = update_job_status(
-            session=session,
-            job_image=job_img_metadata,
-            new_status=StatusEnum.ANALYZING,
-            details=f"Step 2 of 3: Analyzing clothing items... current item:[{current_cropped_idx+1}]",
-        )
-
-        logger.info(
-            f"Seingnd request with cropped_img:{cropped_img_id} to ml_service[label] for job:{job_id}"
-        )
-        response = send_s3_img_to_ml_service(
-            img_filename=cropped_img_metadata.filename,
-            bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
-            service_url=f"{settings.ML_SERVICE_URL}/inference/image/label",
-            timeout=20,
-        )
-        response.raise_for_status()
-        data = response.json()
-        # Using LabelingResponse(**data) is clean, but if the service returns extra fields you don’t expect, it’ll error. Consider .dict() in pydantic to filter unknowns, e.g. LabelingResponse.parse_obj(data) with Config.extra = "ignore".
-        parsed_response = LabelingResponse(**data)
-        logger.info(
-            f"request succeffuly made it to service to analyze cloth piece:{cropped_img_id}. job:{job_id}"
-        )
-
-        new_cropped_img = ImageUpdate(
-            label=parsed_response.label_data, status=StatusEnum.LABELLED
-        )
-        cropped_img_metadata = update_image(
-            session=session, image_in=new_cropped_img, db_image=cropped_img_metadata
-        )
-
-        job_img_metadata = update_job_status(
-            session=session,
-            job_image=job_img_metadata,
-            new_status=StatusEnum.ANALYZING,
-            details=f"Step 2 of 3: Anazying clothing items... cloth item[{current_cropped_idx+1}] completed!",
-        )
-
-    return parsed_response.storage_vector
-
-
-@celery_app.task(
-    name="tasks.save_image_vector_task", bind=True
-)  # bind gets acces to 'self'
-def save_image_vector_task(
-    self,
-    storage_vector: list[float],  # <-- This MUST be the first
-    job_id: UUID,
-    cropped_img_id: UUID,
-    current_cropped_idx: int,
-    collection_name: str,
-) -> UUID:
-    """_summary_
-
-    Args:
-        job_id (UUID): the id of the main image uploaded
-
-    Task to save the merged vector of image and its label into a vector db(chromadb) with the structured label as metadata.
-    """
-
-    chroma_client = chroma_client_wrapper.get_client()
-    with Session(engine) as session:
-        cropped_img_metadata = get_image_by_id(id=cropped_img_id, session=session)
-
-        if not cropped_img_metadata:
-            logger.error(
-                "[Job %s][Crop %s] → metadata not found, aborting",
-                job_id,
-                cropped_img_id,
-            )
-            raise ValueError("Cropped image metadata not found")
-
-        logger.info(
-            f"[Job %s][Crop %s] → about to set status STORING:{job_id} {cropped_img_id}"
-        )
-
-        cropped_img_metadata = update_job_status(
-            session=session,
-            job_image=cropped_img_metadata,
-            new_status=StatusEnum.STORING,
-            details=f"Step 3 of 3:Storing clothing items embeddings into vector database... current item:[{current_cropped_idx+1}]",
-        )
-
-        if not cropped_img_metadata.label:
-            raise ValueError("cropped image metadata is missing its label!")
-
-        logger.info(
-            "[Job %s][Crop %s] → after STORING status: %s",
-            job_id,
-            cropped_img_id,
-            cropped_img_metadata.status,
-        )
-        logger.info(
-            f"[Job {job_id}][Crop {cropped_img_id}] → Preparing to store embedding with args:\n"
-            f"  • img_id: {cropped_img_id}\n"
-            f"  • vector_len: {len(storage_vector) if hasattr(storage_vector, '__len__') else 'N/A'}\n"
-            f"  • label: {cropped_img_metadata.label}\n"
-            f"  • collection: {collection_name}\n"
-            f"  • chroma_session: {type(chroma_client).__name__}"
-        )
-        logger.info(
-            f"[Job {job_id}][Crop {cropped_img_id}] → Embedding preview: {storage_vector[:5]}"
-        )
-        logger.info(
-            f"[Job {job_id}][Crop {cropped_img_id}] → entering add_image_embedding"
-        )
-
         try:
-            label_obj = cropped_img_metadata.label
-            if isinstance(label_obj, dict):
-                label_obj = StructuredLabel(**label_obj)
+            with session.begin():
+                img_metadata = session.get(ImageFile, img_id)
+                if not img_metadata:
+                    raise ValueError(f"No image metadata found for id={img_id}")
 
-            stored_img_id = add_image_embedding(
-                img_id=cropped_img_id,
-                img_vector=storage_vector,
-                chroma_session=chroma_client,
-                img_label=label_obj,
-                collection_name=collection_name,
-            )
+                logger.info("Calling ML service for image labeling")
+                res = send_s3_img_to_service(
+                    img_filename=img_metadata.filename,
+                    bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
+                    service_url=f"{settings.ML_SERVICE_URL}/inference/image/label",
+                )
+
+                labelling_res = LabelingResponse.model_validate(res.json())
+                img_metadata.label = labelling_res.label_data
+                session.add(img_metadata)
+
+                logger.info(f"Successfully labeled image {img_id}")
+                return LabelImgResult(
+                    img_id=img_metadata.id,
+                    label=img_metadata.label,
+                    img_vector=labelling_res.storage_vector,
+                )
+
+        except IntegrityError as e:
+            logger.error(f"IntegrityError in label_img_task: {e}", exc_info=True)
+            raise
+        except ValidationError as e:
+            logger.error(f"ValidationError in label_img_task: {e}", exc_info=True)
+            raise
         except Exception as e:
-            logger.exception(
-                "[Job %s][Crop %s] → Failed to store embedding: %s",
-                job_id,
-                cropped_img_id,
-                str(e),
+            logger.error(f"Unexpected error in label_img_task: {e}", exc_info=True)
+            raise
+
+
+class BestMatchingRequest(BaseModel):
+    candidates: List[str]
+    target: str
+
+
+class BestMatchingResponse(BaseModel):
+    best_match: str  # the label with the highest match
+    score: float  # similarity score (0.0 - 1.0)
+
+
+@celery_app.task(name="task.select_img_for_product_task", bind=True)
+def select_img_for_product_task(
+    self, img_labels: List[LabelImgResult], product_id: UUID
+) -> LabelImgResult:
+    logger.info(f"Starting select_img_for_product_task for product_id={product_id}")
+    with Session(engine) as session:
+        try:
+            with session.begin():
+                product = session.get(Product, product_id)
+                if not product:
+                    raise ValueError(f"No product found for id={product_id}")
+
+                labels = [img.label.to_text() for img in img_labels]
+                logger.info(
+                    f"[select_img_for_product_task] Comparing {len(labels)} image labels against product '{product.name}'"
+                )
+
+                payload = BestMatchingRequest(
+                    candidates=labels, target=product.name
+                ).model_dump()
+                endpoint = f"{settings.ML_SERVICE_URL}/inference/text/matching"
+
+                best_match_res = safe_post_and_parse(
+                    url=endpoint,
+                    payload=payload,
+                    model=BestMatchingResponse,
+                    logger=logger,
+                )
+                logger.info(
+                    f"[select_img_for_product_task] Best match: {best_match_res.best_match} (score={best_match_res.score:.2f})"
+                )
+
+                # hardcoded, prefer: settings.MATCH_SCORE_THRESHOLD
+                if best_match_res.score < 0.7:
+                    raise ValueError(
+                        "No substantial product match found in image labels"
+                    )
+
+                matched_img_label = next(
+                    (
+                        img
+                        for img in img_labels
+                        if img.label.to_text() == best_match_res.best_match
+                    ),
+                    None,
+                )
+                if not matched_img_label:
+                    raise ValueError(
+                        f"Could not map best match '{best_match_res.best_match}' to any LabelImgResult"
+                    )
+
+                new_image_product = ProductImage(
+                    product_id=product_id,
+                    image_id=matched_img_label.img_id,
+                    is_primary_crop=True,
+                )
+                session.add(new_image_product)
+                logger.info(
+                    f"[select_img_for_product_task] Linked image {matched_img_label.img_id} as primary crop for product {product_id}"
+                )
+
+                return matched_img_label
+
+        except IntegrityError as e:
+            logger.error(
+                f"IntegrityError in select_img_for_product_task for product_id={product_id}: {e}",
+                exc_info=True,
             )
-            raise e
-
-        if stored_img_id != cropped_img_metadata.id:
-            raise ValueError(
-                f"Critical error, ids mismatch - cropped_img_id:{cropped_img_id} stored_img_id:{stored_img_id}"
+            raise
+        except ValidationError as e:
+            logger.error(
+                f"ValidationError in select_img_for_product_task for product_id={product_id}: {e}",
+                exc_info=True,
             )
-        logger.info(
-            "[Job %s][Crop %s] → embedding saved to vector DB",
-            job_id,
-            cropped_img_id,
-        )
-        cropped_img_metadata = update_job_status(
-            session=session,
-            job_image=cropped_img_metadata,
-            new_status=StatusEnum.STORED,
-            details=f"Cloth item[{current_cropped_idx+1}] vectors stored!",
-        )
-
-    return cropped_img_id
+            raise
+        except Exception as e:
+            logger.error(
+                f"Unexpected error in select_img_for_product_task for product_id={product_id}: {e}",
+                exc_info=True,
+            )
+            raise
 
 
-@celery_app.task(
-    name="tasks.query_image_vector_task", bind=True
-)  # bind gets acces to 'self'
-def query_image_vector_task(
-    self,
-    query_vector: list[float],  # <-- This MUST be the first
-    job_id: UUID,  # <- just for logging
-    cropped_img_id: UUID,
-    current_cropped_idx: int,
-    collection_name: str,
+# we may have data consistency here, because if this task fail, the whole pipeline is not idempotent.
+@celery_app.task(name="task.save_image_in_vector_db_task", bind=True)
+def save_image_in_vector_db_task(
+    self, selected_result: LabelImgResult, collection_name: str
 ) -> UUID:
-    chroma_client = chroma_client_wrapper.get_client()
-    query_id: UUID | None = None 
+
+    try:
+        chroma_client = chroma_client_wrapper.get_client()
+        img_collection = chroma_client.get_or_create_collection(collection_name)
+
+        # Ensure idempotency: check if ID already exists (if Chroma API supports it)
+        if img_collection.get(ids=[str(selected_result.img_id)]).get("ids"):
+            logger.info(
+                f"Image {selected_result.img_id} already exists in collection {collection_name}. skipping"
+            )
+            return selected_result.img_id
+
+        img_collection.add(
+            ids=[str(selected_result.img_id)],
+            embeddings=[selected_result.img_vector],
+            metadatas=[selected_result.label.model_dump()],
+        )
+
+        logger.info(
+            f"Successfully saved image {selected_result.img_id} to collection '{collection_name}'"
+        )
+        return selected_result.img_id
+
+    except ValueError as e:
+        logger.error(
+            f"Value error while saving image {selected_result.img_id} to collection '{collection_name}': {e}"
+        )
+        raise
+    except ConnectionError as e:
+        logger.warning(
+            f"Connection error while saving image {selected_result.img_id}, retrying...: {e}"
+        )
+        # retrying logic will be here
+        raise self.retry(exc=e)
+    except Exception as e:
+        logger.exception(
+            f"Unexpected error saving image {selected_result.img_id} to collection '{collection_name}'"
+        )
+        raise
+
+
+@celery_app.task(name="task.finalize_orchestrator_task", bind=True)
+def finalize_orchestrator_task(
+    self,
+    selected_img_id: UUID,
+    created_crops: list[UUID],
+    job_id: UUID,
+    model_version: str,
+) -> UUID:
+    logger.info("")
+
     with Session(engine) as session:
-        query = QueryImage(
-            input_image_id=cropped_img_id, model_version="yolo8-fashionCLIP"
-        )
-        query.similar_products = query_similar_imgs(
-            query_vector=query_vector,
-            n_results=3,
-            collection_name=collection_name,
-            chroma_session=chroma_client,
-        )
-        session.add(query)
+        try:
+            with session.begin():
+                job = session.get(Job, job_id)
+                if not job:
+                    raise ValueError("No Job founded")
+
+                if job.type == JobType.INDEXING:
+                    idx_result = IndexingResult(
+                        job_id=job.id,
+                        selected_crop_id=selected_img_id,
+                        created_crop_ids=created_crops,
+                        model_version=model_version,
+                    )
+                    session.add(idx_result)
+                    return idx_result.id
+                else:
+                    return uuid.uuid4()
+
+        except Exception as e:
+            raise
+
+
+@celery_app.task(name="task.update_job_status_task", bind=True)
+def update_job_status_task(
+    self, job_id: UUID, status: JobStatus, message: str | None = None
+):
+    # *only* this task knows about the Job model
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        if not job:
+            raise ValueError("No job founded for this id:")
+
+        job.status = status
+        job.processing_details = message
+        session.add(job)
         session.commit()
-        query_id = query.id
-        
-    if not query_id:
-        raise ValueError("Failed to create and retrieve QueryImage ID from the database.")
-    return query_id
 
 
-# this is wrong in the case of a empty array
-@celery_app.task(name="tasks.finalize_indexing_job_task")
-def finalize_indexing_job_task(results, job_id: UUID):
-    # results is the output of the group (list of crop IDs that were saved)
-    logger.info(f"Finalizing job {job_id}. {len(results)} items processed.")
+# later we will test this aprouch after we tested the prototype, then we can refactor using this function
+def build_dynamic_chord(
+    entry_task: Signature, fanout_task: Signature, body_chain: Signature
+) -> Signature:
+    """
+    Builds a dynamic pipeline:
+    1. Runs entry_task → produces a list of items.
+    2. Fans out each item using fanout_task.
+    3. Aggregates the results and runs the body_chain.
+
+    Args:
+        entry_task: Task that produces a list of items for the fan-out.
+        fanout_task: Task to run in parallel for each item.
+        body_chain: Chain of tasks to run after fan-out results are collected.
+    """
+
+    @celery_app.task(bind=True)
+    def _start_dynamic_chord(self, items):
+        header = [fanout_task.clone(args=[item]) for item in items]
+        return chord(header)(body_chain)
+
+    return chain(entry_task, _start_dynamic_chord.s())
+
+
+@celery_app.task(name="task.start_labeling_chord", bind=True)
+def start_labeling_chord(self, crop_ids, product_id, job_id):
+    header = [label_img_task.s(c) for c in crop_ids]
+    body = chain(
+        select_img_for_product_task.s(product_id),
+        save_image_in_vector_db_task.s(settings.CHROMA_PRODUCT_IMAGE_COLLECTION),
+        finalize_orchestrator_task.s(job_id, settings.MODEL_VERSION),
+    )
+    return chord(header)(body)
+
+
+# for now only set the state of the job from started completed and failed, later we will wrap aroud the steps of the worker
+@celery_app.task(name="task.indexing_orchestratro_task", bind=True)
+def indexing_orchestratro_task(self, job_id: UUID) -> UUID:
+    logger.info("Starting the indexing pipeline")
     with Session(engine) as session:
-        job_img = get_image_by_id(id=job_id, session=session)
-        if not job_img:
-            logger.error(f"image matedata not found for this job_id:{job_id}")
-            raise ValueError("no Job img metadata found")
+        try:
+            with session.begin():
+                # do some idempotency here, like checks if the job alread exist with a given img_id, just jump the creation
 
-        update_job_status(
-            session=session,
-            job_image=job_img,
-            new_status=StatusEnum.COMPLETE,
-            details="All items indexed successfully.",
-        )
+                job = session.get(Job, job_id)
+                if not job:
+                    raise ValueError("No Job founded for this job id")
+                if job.type != JobType.INDEXING:
+                    raise ValueError("Wrong job type for indexing")
+                if not job.input_product_id:
+                    raise ValueError(
+                        "No product_id founded for this job. its necessary for indexing job"
+                    )
 
+                img_id = job.input_img_id
+                product_id = job.input_product_id
 
-@celery_app.task(name="tasks.split_for_indexing_task")
-def split_for_indexing_task(cropped_img_ids: list[UUID], job_id: UUID):
-    """Fans out the processing for each crop."""
-    logger.info(f"Splitting job {job_id} into {len(cropped_img_ids)} parallel tasks.")
-    finalize_indexing = cast(Task, finalize_indexing_job_task)
-    if not cropped_img_ids:
-        finalize_indexing.apply_async(kwargs={"results": [], "job_id": job_id})
-        return
+                update_job_status_task.delay(
+                    job_id, JobStatus.STARTED, "Job is indexing Product Image"
+                )
 
-    # create the parallel group of chains(label -> save)
-    label_image = cast(Task, label_image_task)
-    save_image_vector = cast(Task, save_image_vector_task)
-    header = group(
-        (
-            chain(
-                label_image.s(
-                    job_id=job_id, cropped_img_id=img_id, current_cropped_idx=idx
-                ),
-                save_image_vector.s(
-                    job_id=job_id,
-                    cropped_img_id=img_id,
-                    current_cropped_idx=idx,
-                    collection_name=settings.IMAGES_COLLECTION_NAME,
-                ),
-            )
-        )
-        for idx, img_id in enumerate(cropped_img_ids)
-    )
-    # Context Passing: Be cautious that results passed to finalize_indexing_job_task is exactly the list of return values from save_image_vector_task. If any task errors, the chord may never fire, leaving the job in limbo. Consider adding an error callback or leveraging chord_error handlers to mark the job as failed.
-    # create the chord: run the group and then the finalizer
-    (header | finalize_indexing.s(job_id=job_id)).apply_async()
+                workflow = chain(
+                    cloth_detection_task.s(img_id),
+                    start_labeling_chord.s(product_id, job_id),
+                )
+                workflow.apply_async(
+                    link_error=update_job_status_task.s(
+                        job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
+                    )
+                )
+                return job_id
 
-
-@celery_app.task(name="tasks.split_for_querying_task")
-def split_for_querying_task(cropped_img_ids: list[UUID], job_id: UUID):
-    logger.info(
-        f"Spliting job {job_id} into {len(cropped_img_ids)} paralell tasks for querying"
-    )
-    finalize_querying = cast(Task, finalize_querying_job_task)
-    if not cropped_img_ids:
-        finalize_querying_job_task.apply_async(kwargs={"results": [], "job_id": job_id})  # type: ignore
-    label_image = cast(Task, label_image_task)
-    query_image = cast(Task, query_image_vector_task)
-
-    header = group(
-        (
-            chain(
-                label_image.s(
-                    job_id=job_id, cropped_img_id=img_id, current_cropped_idx=idx
-                ),
-                query_image.s(
-                    job_id=job_id,
-                    cropped_img_id=img_id,
-                    current_cropped_idx=idx,
-                    collection_name=settings.IMAGES_COLLECTION_NAME,
-                ),
-            )
-        )
-        for idx, img_id in enumerate(cropped_img_ids)
-    )
-    (header | finalize_querying.s(job_id=job_id)).apply_async()
-
-
-@celery_app.task(name="tasks.finalize_querying_job_task")
-def finalize_querying_job_task(results, job_id: UUID):
-    # results is the output of the group (list of crop IDs that were saved)
-    logger.info(
-        f"Finalizing job {job_id}. {len(results)} items processed for querying."
-    )
-    with Session(engine) as session:
-        job_img = get_image_by_id(id=job_id, session=session)
-        if not job_img:
-            logger.error(f"image matedata not found for this job_id:{job_id}")
-            raise ValueError("no Job img metadata found")
-        message = "All items retrieved successfully"
-        status = StatusEnum.COMPLETE
-        if not results:
-            message = "No cloth piece found in this image"
-            status = StatusEnum.FAILED
-        update_job_status(
-            session=session,
-            job_image=job_img,
-            new_status=status,
-            details=message,
-        )
+        except Exception as e:
+            raise

@@ -12,7 +12,7 @@ import numpy as np
 from api.deps import SessionDep, CurrentUser, ChromaSessionDep
 from core.config import Settings
 from core.vector_db.img_vector_crud import delete_img_in_collection, get_image_data, get_images_ids
-from models.image import ImageCreate, ImageDB, ImagePublic, ImageUpdate, StatusEnum
+from backend.app.models.image import ImageCreate, ImageDB, ImagePublic, ImageUpdate, StatusEnum
 from core.image_crud import get_image_list_by_ids, update_image, get_image_by_id
 
 

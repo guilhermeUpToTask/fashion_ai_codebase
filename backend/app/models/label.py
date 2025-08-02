@@ -7,7 +7,10 @@ class StructuredLabel(BaseModel):
     color: str
     style: str
     pattern: str
-    
+    def to_text(self) -> str:
+        """Convert structured label to a single descriptive string."""
+        parts = [self.color, self.style, self.pattern, self.category]
+        return " ".join(filter(None, parts))
 class LabelingResponse(BaseModel):
     label_data: StructuredLabel
     # The final vector to be stored in ChromaDB.

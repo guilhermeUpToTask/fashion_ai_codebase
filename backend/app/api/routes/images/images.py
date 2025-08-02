@@ -1,3 +1,5 @@
+#refactor here.
+
 from io import BytesIO
 import os
 from PIL import Image
@@ -28,7 +30,7 @@ from core.image_crud import (
 from core import storage
 
 # --- Model & Workflow Imports ---
-from models.image import ImageCreate, ImageDB, ImagePublic, StatusEnum
+from backend.app.models.image import ImageCreate, ImageDB, ImagePublic, StatusEnum
 from worker.pipeline import start_indexing_pipeline, test_task, start_querying_pipeline
 
 # ---Constants---
