@@ -376,7 +376,7 @@ def start_labeling_chord(self, crop_ids, product_id, job_id):
 
 # for now only set the state of the job from started completed and failed, later we will wrap aroud the steps of the worker
 @celery_app.task(name="task.indexing_orchestratro_task", bind=True)
-def indexing_orchestratro_task(self, job_id: UUID) -> UUID:
+def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
     logger.info("Starting the indexing pipeline")
     with Session(engine) as session:
         try:

@@ -25,7 +25,7 @@ class Job(SQLModel, table=True):
     model_config = ConfigDict(use_enum_values=True) # type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     input_img_id: uuid.UUID = Field(foreign_key="image.id")
-    input_product_id : uuid.UUID | None = Field(foreign_key="product.id")
+    input_product_id : uuid.UUID | None = Field(default=None, foreign_key="product.id")
     type: JobType = Field(
         sa_column=Column(
             String(20),

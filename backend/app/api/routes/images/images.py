@@ -1,37 +1,21 @@
 #refactor here.
 
 from io import BytesIO
-import os
 from PIL import Image
 from typing import Annotated
 from fastapi import APIRouter, File, HTTPException, Header, UploadFile
 import uuid
-from models.query import QueryImagePublic
-from worker.tasks import add
-from celery_app import app as celery_app
-import numpy as np
-from sqlalchemy import Delete
+from backend.app.models.job import Job, JobStatus, JobType
+from backend.app.models.product import Product, ProductImage
+from worker.tasks import indexing_orchestrator_task
 
 # --- Core Application Imports ---
-from api.deps import ChromaSessionDep, CurrentUser, SessionDep
-from core.vector_db.img_vector_crud import (
-    delete_img_in_collection,
-    get_image_data,
-    get_images_ids,
-)
+from api.deps import CurrentUser, SessionDep
 from core.config import settings
-from core.image_crud import (
-    create_image,
-    get_image_by_id,
-    get_image_list,
-    get_image_list_by_ids,
-    get_query_image_by_id,
-)
 from core import storage
 
 # --- Model & Workflow Imports ---
-from backend.app.models.image import ImageCreate, ImageDB, ImagePublic, StatusEnum
-from worker.pipeline import start_indexing_pipeline, test_task, start_querying_pipeline
+from backend.app.models.image import ImageFile, ImagePublic
 
 # ---Constants---
 MAX_RESOLUTION = 4096
@@ -40,17 +24,6 @@ ALLOWED_TYPES = {"image/jpeg", "image/png"}
 router = APIRouter(prefix="/images", tags=["images"])
 
 # Helpers
-
-
-@router.post("/tasks/add")
-async def run_add_task(img_id:uuid.UUID):
-    #task = add.delay(x, y)#type: ignore
-    task = test_task(img_id)
-    #we will test calling a function now
-    
-    return {"task_id": task.id}
-
-
 async def read_and_validate_file(
     img_file: UploadFile, chunk_size: int, max_size: int
 ) -> BytesIO:
@@ -71,6 +44,13 @@ async def read_and_validate_file(
     img_stream.seek(0)
     return img_stream
 
+async def safe_create_pil_img(img_file: BytesIO) -> Image.Image:
+    img_file.seek(0)
+    img = Image.open(img_file)
+    img.verify()
+    img_file.seek(0)
+    img = Image.open(img_file)
+    return img
 
 def get_extesion_type_for_img(img: Image.Image) -> str:
     image_format = img.format
@@ -81,14 +61,31 @@ def get_extesion_type_for_img(img: Image.Image) -> str:
         file_extension = "jpg"
     return file_extension
 
+async def procces_image(img_file: UploadFile, session:SessionDep) -> ImageFile:
+        chunk_size = 1024 * 1024
+        img_stream = await read_and_validate_file(img_file=img_file, chunk_size=chunk_size, max_size=settings.MAX_IMAGE_SIZE_BYTES)
+        img = await safe_create_pil_img(img_stream)
+        img_format = get_extesion_type_for_img(img)
+        width, height = img.size
+        img_filename = f"originals/{uuid.uuid4().hex}.{img_format}"
+        s3_path = storage.upload_file_to_s3(
+            file_obj=img_stream,
+            bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
+            object_name=img_filename,
+        )
+        img_metadata = ImageFile(filename=img_filename, width=width, height=height, format=img_format, path=s3_path)
+        return img_metadata
+
+
 
 #the index and the query image uses quite similar processing, later we will refactor both to consume helper functions for processing image in atomic way.
-@router.post("/index", response_model=ImagePublic, status_code=202)
-async def index_new_image(
+@router.post("/{product_id}/upload")
+async def upload_image_for_product(
     session: SessionDep,
     content_length: Annotated[int, Header()],
     image_file: Annotated[UploadFile, File(description="Product image to be indexed")],
-) -> ImagePublic:
+    product_id: uuid.UUID
+) -> uuid.UUID:
     """
     Accepts an image, uploads it to storage, creates a job record in the database,
     and starts the asynchronous indexing pipeline
@@ -106,92 +103,44 @@ async def index_new_image(
         )
 
     try:
-        chunk_size = 1024 * 1024  # 1MB
-        img_stream = await read_and_validate_file(
-            img_file=image_file,
-            chunk_size=chunk_size,
-            max_size=settings.MAX_IMAGE_SIZE_BYTES,
-        )
-
-        img = Image.open(img_stream)
-        img.verify()  # verify integrity
-
-        img_stream.seek(0)
-        img = Image.open(img_stream)
-        img.load()
-
-        width, height = img.size
-        if width > MAX_RESOLUTION or height > MAX_RESOLUTION:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Image resolution too large. Max is {MAX_RESOLUTION}",
-            )
-
-        file_extension = get_extesion_type_for_img(img=img)
-    except HTTPException as e:
-        raise e  # Re-raise vallidation exceptions
-    except Exception:
-        # log the error here
-        raise HTTPException(status_code=422, detail="Invalid or corrupted image file.")
-
-    # this needs to be atomic, if the database create image fails, its reverse the s_3 object, and vice&versa
-    s3_object_name = f"originals/{uuid.uuid4().hex}.{file_extension}"
-
-    try:
-        s3_path = storage.upload_file_to_s3(
-            file_obj=img_stream,
-            bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
-            object_name=s3_object_name,
-        )
+        img_metadata = await procces_image(img_file=image_file, session=session)
+        session.add(img_metadata)
+        session.commit()
+        session.refresh(img_metadata)
+        
+        img_product_link = ProductImage(image_id=img_metadata.id, product_id=product_id)
+        session.add(img_product_link)
+        session.commit()
+        
+        return img_metadata.id
+        
     except Exception as e:
         # Log the error later
         raise HTTPException(
             status_code=500, detail=f"Failed to upload image to storage: {e}"
         )
 
-    img_in = ImageCreate(
-        path=s3_path,
-        filename=s3_object_name,
-        width=width,
-        height=height,
-        format=img.format,
-        status=StatusEnum.QUEUED,  # use to show its waitin for a worker
-        processing_details="Job created and queued for processing.",
-    )
-    image_db = create_image(session=session, image_in=img_in)
-
-    # start the asynchronous pipeline
-    start_indexing_pipeline(image_db.id)
-
-    # return the initial public model of the job, and the 202 accepted status code.
-    return ImagePublic.model_validate(image_db)
-
-
-@router.get("/query/{query_id}", response_model=QueryImagePublic)
-def get_query_results(
-    *,
-    session: SessionDep,
-    query_id: uuid.UUID,
-) -> QueryImagePublic:
-    """
-    Retrieve the results of a specific image query by its ID.
-    """
-    query_db = get_query_image_by_id(session=session, query_id=query_id)
-
-    if not query_db:
-        raise HTTPException(
-            status_code=404,
-            detail="Query not found.",
-        )
-    return QueryImagePublic.model_validate(query_db)
-
-
-@router.post("/query", response_model=ImagePublic, status_code=202)
+@router.post('/{product_id}/{img_id}/index', status_code=202)
+async def index_product_image(product_id:uuid.UUID, img_id:uuid.UUID, session:SessionDep) -> uuid.UUID:
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="No product founded for giving id")
+    img_metadata = session.get(ImageFile, img_id)
+    if not img_metadata:
+        raise HTTPException(status_code=404, detail="No Image founded for giving id")   
+    new_job = Job(input_img_id=img_id, input_product_id=product_id, type=JobType.INDEXING, status=JobStatus.QUEUED)
+    session.add(new_job)
+    session.commit()
+    
+    indexing_orchestrator_task.delay(new_job.id)
+    return new_job.id
+    
+@router.post("/query", status_code=202)
 async def query_new_image(
     session: SessionDep,
     content_length: Annotated[int, Header()],
     image_file: Annotated[UploadFile, File(description="Product image to be indexed")],
-) -> ImagePublic:
+) -> uuid.UUID:
     """
     Accepts an image, uploads it to storage, creates a job record in the database,
     and starts the asynchronous indexing pipeline
@@ -209,139 +158,24 @@ async def query_new_image(
         )
 
     try:
-        chunk_size = 1024 * 1024  # 1MB
-        img_stream = await read_and_validate_file(
-            img_file=image_file,
-            chunk_size=chunk_size,
-            max_size=settings.MAX_IMAGE_SIZE_BYTES,
-        )
-
-        img = Image.open(img_stream)
-        img.verify()  # verify integrity
-
-        img_stream.seek(0)
-        img = Image.open(img_stream)
-        img.load()
-
-        width, height = img.size
-        if width > MAX_RESOLUTION or height > MAX_RESOLUTION:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Image resolution too large. Max is {MAX_RESOLUTION}",
-            )
-
-        file_extension = get_extesion_type_for_img(img=img)
+        img_metadata = await procces_image(img_file=image_file, session=session)
+        new_job= Job(input_img_id=img_metadata.id, type=JobType.QUERY, status=JobStatus.QUEUED)
+        session.commit()
+        #query_orchestrator_task.apply_async(job_id=new_job.id)
+        return new_job.id
+        
     except HTTPException as e:
         raise e  # Re-raise vallidation exceptions
-    except Exception:
-        # log the error here
-        raise HTTPException(status_code=422, detail="Invalid or corrupted image file.")
-
-    # this needs to be atomic, if the database create image fails, its reverse the s_3 object, and vice&versa
-    s3_object_name = f"originals/{uuid.uuid4().hex}.{file_extension}"
-
-    try:
-        s3_path = storage.upload_file_to_s3(
-            file_obj=img_stream,
-            bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
-            object_name=s3_object_name,
-        )
     except Exception as e:
-        # Log the error later
-        raise HTTPException(
-            status_code=500, detail=f"Failed to upload image to storage: {e}"
-        )
-
-    img_in = ImageCreate(
-        path=s3_path,
-        filename=s3_object_name,
-        width=width,
-        height=height,
-        format=img.format,
-        status=StatusEnum.QUEUED,  # use to show its waitin for a worker
-        processing_details="Job created and queued for processing.",
-    )
-    image_db = create_image(session=session, image_in=img_in)
-
-    # start the asynchronous pipeline
-    start_querying_pipeline(image_db.id)
-
-    # return the initial public model of the job, and the 202 accepted status code.
-    return ImagePublic.model_validate(image_db)
-
-
-@router.post("/")
-async def upload_single_img(
-    session: SessionDep,
-    content_length: Annotated[int, Header()],
-    image_file: Annotated[UploadFile, File(description="Image File")],
-) -> ImagePublic:
-    if image_file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail="Invalid file type")
-
-    if content_length > settings.MAX_IMAGE_SIZE_BYTES:
-        raise HTTPException(status_code=400, detail="File too large")
-
-    safe_filename = f"{uuid.uuid4().hex}_{image_file.filename}"  # later we see the need to sanataze the filename
-
-    size = 0
-    chunk_size = 1024 * 1024  # 1MB calculate later and save the result to a enum
-    img_stream = BytesIO()
-
-    while chunk := await image_file.read(chunk_size):  # chunk reading
-        size += len(chunk)
-        if size > settings.MAX_IMAGE_SIZE_BYTES:
-            raise HTTPException(status_code=400, detail="File too large")
-        img_stream.write(chunk)
-
-    try:
-        img_stream.seek(0)  # set the pointer to the initial state
-        img = Image.open(img_stream)
-        img.verify()  # after the verify the image cannot be used
-
-        img_stream.seek(0)
-        img = Image.open(img_stream)
-        img.load()
-
-        width, heigth = img.size
-        if width > 4000 and heigth > 4000:
-            raise HTTPException(status_code=400, detail="Image Resolution too large")
-    except HTTPException as e:
         raise e
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid Image")
-
-    img_stream.seek(0)
-
-    os.makedirs("imgs", exist_ok=True)
-    dest_path = f"imgs/{safe_filename}"
-    with open(dest_path, "wb") as out_file:
-        out_file.write(img_stream.getvalue())
-
-    img_in = ImageCreate(
-        path=dest_path,
-        filename=safe_filename,
-        width=width,
-        height=heigth,
-        format=img.format if hasattr(img, "format") else None,
-        status=StatusEnum.UPLOADED,
-    )
-    print(f"image_in:{img_in}")
-
-    image_db = create_image(session=session, image_in=img_in)
-    image_public = ImagePublic.model_validate(image_db)
-
-    # here we will initializate the pipeline of the tasks
-    return image_public
 
 
-@router.get("/")
-async def get_imgs_data(session: SessionDep):
-    imgs = get_image_list(session=session)
 
-    return imgs
 
-@router.delete("/sqldb/all")
-def delete_all_images_in_db(session: SessionDep):
-    session.execute(Delete(ImageDB))
-    session.commit()
+@router.get("/job/status/{job_id}")
+async def get_job_status(job_id: uuid.UUID, session: SessionDep) -> JobStatus:
+    job = session.get(Job,job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="No job founded for this id")
+    return job.status
+
