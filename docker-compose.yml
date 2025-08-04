@@ -154,6 +154,9 @@ services:
             - ADMIN_PASSWORD=${ADMIN_PASSWORD}
             - ALGORITHM=${ALGORITHM}
             - SECRET_KEY=${SECRET_KEY}
+            - CHROMA_PRODUCT_IMAGE_COLLECTION=${CHROMA_PRODUCT_IMAGE_COLLECTION}
+            - MODEL_VERSION=${MODEL_VERSION}
+
         depends_on:
             postgres:
                 condition: service_healthy
@@ -196,6 +199,8 @@ services:
             - ADMIN_PASSWORD=${ADMIN_PASSWORD}
             - ALGORITHM=${ALGORITHM}
             - SECRET_KEY=${SECRET_KEY}
+            - CHROMA_PRODUCT_IMAGE_COLLECTION=${CHROMA_PRODUCT_IMAGE_COLLECTION}
+            - MODEL_VERSION=${MODEL_VERSION}
         depends_on:
             - backend_api #ensure build context is shared, dependes on DB/REDIS implicitly
             - redis

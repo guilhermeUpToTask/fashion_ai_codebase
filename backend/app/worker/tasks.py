@@ -9,17 +9,15 @@ from celery.canvas import Signature
 from psycopg2 import IntegrityError
 import requests
 from sqlmodel import Session, select
-from backend.app.models.job import Job, JobStatus, JobType
-from backend.app.models.product import Product, ProductImage
-from backend.app.models.result import IndexingResult, QueryResult
-from models.query import QueryImage, QuerySimilarProduct
+from models.job import Job, JobStatus, JobType
+from models.product import Product, ProductImage
+from models.result import IndexingResult, QueryResult
 from celery_app import app as celery_app
 from core import storage
 from core.vector_db.img_vector_crud import add_image_embedding
-from backend.app.models.image import ImageFile
+from models.image import ImageFile
 from models.label import LabelingResponse, StructuredLabel
 from core.vector_db.chroma_db import chroma_client_wrapper
-from core.vector_db.img_vector_crud import query_similar_imgs
 from core.db import engine
 from core.config import settings
 from utils.image_helpers import (

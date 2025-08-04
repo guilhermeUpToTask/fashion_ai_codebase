@@ -5,22 +5,22 @@ from sqlmodel import JSON, Field, PrimaryKeyConstraint, SQLModel, Column, Relati
 from models.product import Product, ProductImage
 
 class IndexingResult(SQLModel, table=True):
-    __tablename__= "indexing_result" #type: ignore
+    __tablename__= "indexing_results" #type: ignore
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    job_id: uuid.UUID = Field(foreign_key="job.id", unique=True)
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", unique=True)
     #input image and its crops created
     created_crop_ids: List[uuid.UUID] = Field(sa_column=Column(JSON))
     #stores the id of the specific image crop that was chosen as primary.
-    selected_crop_id: uuid.UUID = Field(foreign_key="image.id")
+    selected_crop_id: uuid.UUID = Field(foreign_key="images.id")
     model_version: str = Field(max_length=50)
     
 class QueryResultImage(SQLModel, table=True):
-    __tablename__ = "query_result_product" #type: ignore
-    __table_args__ = (PrimaryKeyConstraint("query_result_id", "product_id"),)
+    __tablename__ = "query_result_products" #type: ignore
+    __table_args__ = (PrimaryKeyConstraint("query_result_id", "matched_image_id"),)
     
-    query_result_id: uuid.UUID = Field(foreign_key="query_result.id")
-    matched_image_id: uuid.UUID = Field(foreign_key="image.id")
+    query_result_id: uuid.UUID = Field(foreign_key="query_results.id")
+    matched_image_id: uuid.UUID = Field(foreign_key="images.id")
     rank: int
     score: float
     
@@ -30,8 +30,9 @@ class QueryResultImage(SQLModel, table=True):
 
 
 class QueryResult(SQLModel, table=True):
+    __tablename__ = "query_results" #type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    job_id: uuid.UUID = Field(foreign_key="job.id", unique=True)
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", unique=True)
     model_version: str = Field(max_length=50)
     
     similar_products: List["QueryResultImage"] = Relationship()

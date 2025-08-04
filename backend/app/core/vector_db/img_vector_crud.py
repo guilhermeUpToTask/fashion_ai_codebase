@@ -10,7 +10,7 @@ from chromadb.api import ClientAPI
 from sqlmodel import Session
 
 # import torch
-from models.query import QuerySimilarProduct
+#from models.query import QuerySimilarProduct
 from models.label import StructuredLabel
 
 logger = logging.getLogger(__name__)
@@ -61,42 +61,42 @@ def get_images_ids(collection: Collection) -> list[uuid.UUID]:
 
 
 #     return uuid.UUID(ids[0])
-def query_similar_imgs(
-    query_vector: List[float],
-    n_results: int,
-    chroma_session: ClientAPI,
-    collection_name: str,
-) -> List[QuerySimilarProduct]:
-    """
-    Query the given ChromaDB collection for the top‑n most similar items
-    to the provided embedding vector, and return their IDs as UUID objects.
+# def query_similar_imgs(
+#     query_vector: List[float],
+#     n_results: int,
+#     chroma_session: ClientAPI,
+#     collection_name: str,
+# ) -> List[QuerySimilarProduct]:
+#     """
+#     Query the given ChromaDB collection for the top‑n most similar items
+#     to the provided embedding vector, and return their IDs as UUID objects.
 
-    Args:
-        query_vector:   A dense embedding (list of floats) to search for.
-        n_results:      Number of closest matches to return.
-        chroma_session: An active ChromaDB client/session.
-        collection_name:Name of the collection to query.
+#     Args:
+#         query_vector:   A dense embedding (list of floats) to search for.
+#         n_results:      Number of closest matches to return.
+#         chroma_session: An active ChromaDB client/session.
+#         collection_name:Name of the collection to query.
 
-    Returns:
-        A list of UUIDs corresponding to the top‑n matches.
-    """
+#     Returns:
+#         A list of UUIDs corresponding to the top‑n matches.
+#     """
 
-    collection = chroma_session.get_collection(collection_name)
-    result = collection.query(query_embeddings=[query_vector], n_results=n_results)
-    ids = result["ids"][0]
-    if not result["distances"]:
-        raise ValueError("No distances Found in the query result for similar images")
-    distances = result["distances"][0]
-    # We can check later for bad UUID conversion check
-    similar_products = [
-        QuerySimilarProduct(
-            product_id=uuid.UUID(ids[i]),
-            score=(1 - distances[i]),
-            rank=i+1
-        )
-        for i in range(len(ids))
-    ]
-    return similar_products
+#     collection = chroma_session.get_collection(collection_name)
+#     result = collection.query(query_embeddings=[query_vector], n_results=n_results)
+#     ids = result["ids"][0]
+#     if not result["distances"]:
+#         raise ValueError("No distances Found in the query result for similar images")
+#     distances = result["distances"][0]
+#     # We can check later for bad UUID conversion check
+#     similar_products = [
+#         QuerySimilarProduct(
+#             product_id=uuid.UUID(ids[i]),
+#             score=(1 - distances[i]),
+#             rank=i+1
+#         )
+#         for i in range(len(ids))
+#     ]
+#     return similar_products
 
 
 # # For batch vectors list, we will query all at same query function

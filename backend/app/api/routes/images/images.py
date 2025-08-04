@@ -5,8 +5,8 @@ from PIL import Image
 from typing import Annotated
 from fastapi import APIRouter, File, HTTPException, Header, UploadFile
 import uuid
-from backend.app.models.job import Job, JobStatus, JobType
-from backend.app.models.product import Product, ProductImage
+from models.job import Job, JobStatus, JobType
+from models.product import Product, ProductImage
 from worker.tasks import indexing_orchestrator_task
 
 # --- Core Application Imports ---
@@ -15,7 +15,7 @@ from core.config import settings
 from core import storage
 
 # --- Model & Workflow Imports ---
-from backend.app.models.image import ImageFile, ImagePublic
+from models.image import ImageFile, ImagePublic
 
 # ---Constants---
 MAX_RESOLUTION = 4096

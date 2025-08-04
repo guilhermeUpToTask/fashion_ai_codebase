@@ -22,10 +22,11 @@ class JobStatus(str, Enum):
 
 
 class Job(SQLModel, table=True):
+    __tablename__ = "jobs" #type: ignore
     model_config = ConfigDict(use_enum_values=True) # type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    input_img_id: uuid.UUID = Field(foreign_key="image.id")
-    input_product_id : uuid.UUID | None = Field(default=None, foreign_key="product.id")
+    input_img_id: uuid.UUID = Field(foreign_key="images.id")
+    input_product_id : uuid.UUID | None = Field(default=None, foreign_key="products.id")
     type: JobType = Field(
         sa_column=Column(
             String(20),
@@ -52,7 +53,7 @@ class Job(SQLModel, table=True):
         default=None, description="details of the current step or error."
     )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    update_at: datetime = Field(
+    updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc)},
     )

@@ -1,29 +1,18 @@
 from datetime import datetime, timezone
-from enum import Enum
 import uuid
 from sqlmodel import (
     JSON,
-    CheckConstraint,
-    ForeignKey,
-    Integer,
     Relationship,
     SQLModel,
     Field,
     Column,
-    String,
 )
-from pydantic import ConfigDict, field_validator
-from pathlib import Path
-from typing import List, Optional, Union
-from backend.app.models.product import ProductImage
+from typing import List, Optional
 from models.label import StructuredLabel
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import relationship, Mapped
-from sqlalchemy.dialects.postgresql import UUID as SQLAlchemyUUID
+
 
 class ImageFile(SQLModel, table=True):
-    __tablename__= "image_files" #type: ignore
+    __tablename__= "images" #type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     path: str
     filename: str
@@ -33,7 +22,7 @@ class ImageFile(SQLModel, table=True):
     label: StructuredLabel | None = Field(default=None, sa_column=Column(JSON))
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    update_at: datetime = Field(
+    updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc)},
     )
@@ -41,11 +30,11 @@ class ImageFile(SQLModel, table=True):
     #self relationship logic
     original_id: Optional[uuid.UUID] = Field(
         default=None,
-        foreign_key="image.id",
+        foreign_key="images.id",
         description="ID of original image if this is a crop",
     )
     original: Optional["ImageFile"] = Relationship(
-        back_populates="crops", sa_relationship_kwargs={"remote_side": "ImageDB.id"}
+        back_populates="crops", sa_relationship_kwargs={"remote_side": "images.id"}
     )
     crops: List["ImageFile"] = Relationship(back_populates="original")
     

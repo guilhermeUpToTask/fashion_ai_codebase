@@ -54,7 +54,7 @@ class ProductImage(SQLModel, table=True):
     __tablename__ = "product_images"  # type: ignore
     # Foreign keys to the two entities it connects.
     product_id: UUID = Field(foreign_key="products.id", primary_key=True)
-    image_id: UUID = Field(foreign_key="image_files.id", primary_key=True)
+    image_id: UUID = Field(foreign_key="images.id", primary_key=True)
     # --- METADATA SPECIFIC TO THIS CONTEXT ---
     is_primary_crop: bool = Field(default=False)
     # --- Relationships ---
