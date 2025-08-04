@@ -24,9 +24,6 @@ class QueryResultImage(SQLModel, table=True):
     rank: int
     score: float
     
-    #--- Relationships ---
-    product: Product = Relationship()
-    matched_product_image: "ProductImage" = Relationship()
 
 
 class QueryResult(SQLModel, table=True):

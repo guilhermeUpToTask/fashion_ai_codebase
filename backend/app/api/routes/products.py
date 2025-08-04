@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlmodel import select
 
 from api.deps import SessionDep, CurrentUser
-from models.product import Product, ProductCreate, ProductRead, ProductUpdate
+from models.product import ProductCreate, ProductUpdate
+from models import Product
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -18,14 +19,15 @@ async def create_product(
     """
     Create a new product. Requires authenticated user.
     """
-    product = Product.model_validate(product_in)
+    product = Product(**product_in.model_dump())
+
     session.add(product)
     session.commit()
     session.refresh(product)
     return product
 
 
-@router.get("/", response_model=List[ProductRead])
+@router.get("/")
 async def list_products(
     session: SessionDep,
     offset: int = Query(0, ge=0),
@@ -39,7 +41,7 @@ async def list_products(
     return list(results)
 
 
-@router.get("/{product_id}", response_model=ProductRead)
+@router.get("/{product_id}")
 async def get_product(
     session: SessionDep,
     product_id: UUID = Path(..., description="ID of the product to retrieve"),
@@ -55,7 +57,7 @@ async def get_product(
     return product
 
 
-@router.put("/{product_id}", response_model=ProductRead)
+@router.put("/{product_id}")
 async def update_product(
     product_id: UUID,
     product_in: ProductUpdate,

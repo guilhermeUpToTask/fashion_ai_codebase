@@ -2,7 +2,6 @@ from uuid import UUID, uuid4
 from typing import List, Optional
 from pydantic import ConfigDict
 from sqlmodel import SQLModel, Field, Relationship
-from models.image import ImageFile, ImagePublic
 
 
 class ProductBase(SQLModel):
@@ -20,9 +19,6 @@ class ProductCreate(ProductBase):
     pass
 
 
-class ProductRead(ProductBase):
-    id: UUID
-    product_images: list[ImagePublic] | None = None
 
 
 class ProductUpdate(SQLModel):
@@ -59,4 +55,3 @@ class ProductImage(SQLModel, table=True):
     is_primary_crop: bool = Field(default=False)
     # --- Relationships ---
     product: "Product" = Relationship(back_populates="product_images")
-    image: "ImageFile" = Relationship()  # One-way is fine here.

@@ -34,7 +34,7 @@ class ImageFile(SQLModel, table=True):
         description="ID of original image if this is a crop",
     )
     original: Optional["ImageFile"] = Relationship(
-        back_populates="crops", sa_relationship_kwargs={"remote_side": "images.id"}
+        back_populates="crops", sa_relationship_kwargs={"remote_side": "ImageFile.id"}
     )
     crops: List["ImageFile"] = Relationship(back_populates="original")
     
