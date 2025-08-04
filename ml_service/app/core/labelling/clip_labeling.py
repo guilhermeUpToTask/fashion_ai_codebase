@@ -1,7 +1,7 @@
 import torch
 from transformers import CLIPModel, CLIPProcessor
 from core.labelling.vocab import LABEL_DICTIONARY
-from core.embedding import label_to_vector
+from core.embedding import text_to_vector
 from models.label import StructuredLabel
 
 
@@ -22,8 +22,8 @@ def generate_structured_label(
 
     #this result we can storage in a cache or something for not needing to embed every time the call is make it
     for label_type, label_list in LABEL_DICTIONARY.items():
-        embeddings = label_to_vector.embed(
-            labels=label_list, model=model, processor=processor
+        embeddings = text_to_vector.embed_text_list(
+            texts=label_list, model=model, processor=processor
         )
         embedded_labels[label_type] = {"labels": label_list, "vectors": embeddings}
     

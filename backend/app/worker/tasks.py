@@ -31,7 +31,7 @@ from utils.helpers import parse_json_response, safe_post_and_parse
 import mimetypes
 import base64
 import logging
-from pydantic import BaseModel, ValidationError 
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,7 @@ class BestMatchingRequest(BaseModel):
 
 
 class BestMatchingResponse(BaseModel):
+    index: int
     best_match: str  # the label with the highest match
     score: float  # similarity score (0.0 - 1.0)
 
@@ -189,28 +190,12 @@ def select_img_for_product_task(
                     model=BestMatchingResponse,
                     logger=logger,
                 )
-                logger.info(
-                    f"[select_img_for_product_task] Best match: {best_match_res.best_match} (score={best_match_res.score:.2f})"
-                )
-
                 # hardcoded, prefer: settings.MATCH_SCORE_THRESHOLD
                 if best_match_res.score < 0.7:
                     raise ValueError(
                         "No substantial product match found in image labels"
                     )
-
-                matched_img_label = next(
-                    (
-                        img
-                        for img in img_labels
-                        if img.label.to_text() == best_match_res.best_match
-                    ),
-                    None,
-                )
-                if not matched_img_label:
-                    raise ValueError(
-                        f"Could not map best match '{best_match_res.best_match}' to any LabelImgResult"
-                    )
+                matched_img_label = img_labels[best_match_res.index]
 
                 new_image_product = ProductImage(
                     product_id=product_id,
@@ -218,6 +203,7 @@ def select_img_for_product_task(
                     is_primary_crop=True,
                 )
                 session.add(new_image_product)
+                
                 logger.info(
                     f"[select_img_for_product_task] Linked image {matched_img_label.img_id} as primary crop for product {product_id}"
                 )

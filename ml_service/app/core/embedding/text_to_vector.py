@@ -4,13 +4,13 @@ import torch
 
 
 # we can added the labeled texts into a vecto db later
-def embed(
-    labels: list[str], model: CLIPModel, processor: CLIPProcessor
+def embed_text_list(
+    texts: list[str], model: CLIPModel, processor: CLIPProcessor
 ) -> torch.Tensor:
     device = next(model.parameters()).device  # enforce that tensors would be in the same device as the model
     
     text_inputs = processor(
-        text=labels, return_tensors="pt", padding=True, truncation=True, max_length=77
+        text=texts, return_tensors="pt", padding=True, truncation=True, max_length=77
     )
     #move tensors to the same devise
     input_ids = cast(torch.Tensor, text_inputs["input_ids"]).to(device)
@@ -26,3 +26,9 @@ def embed(
         )  # normalize
 
     return text_features
+
+
+
+
+def embed_text(text: str, model: CLIPModel, processor:CLIPProcessor) -> torch.Tensor:
+    return embed_text_list([text],model, processor)[0].unsqueeze(0)

@@ -2,9 +2,9 @@
 
 # Import models with no or simple dependencies first
 from .user import User
-from .image import ImageDB
+from .image import ImageFile
 
 # Import models that have foreign keys to the above tables
-from .query import QueryImage, QuerySimilarProduct
-
-# Import any other models here...
+from .product import Product, ProductImage
+from .result import IndexingResult, QueryResult, QueryResultImage
+from .job import Job

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Header, UploadFile
 from fastapi.responses import HTMLResponse
 import torch
 from core.cloth_detection.yolo import crop_img
-from core.embedding import img_to_vector, label_to_vector
+from core.embedding import img_to_vector, text_to_vector
 from core.labelling import clip_labeling
 from core.transformer_models import yolo_model, clip_model, clip_processor
 from utils.images import pil_img_to_bytes, encode_image_base64
@@ -64,8 +64,8 @@ async def labels_for_img(img_file: UploadFile):
         img_vector=img_vector, model=clip_model, processor=clip_processor
     )
     label_text = f"a {img_labels.color} {img_labels.pattern} {img_labels.style} {img_labels.category}"
-    label_vector = label_to_vector.embed(
-        labels=[label_text], model=clip_model, processor=clip_processor
+    label_vector = text_to_vector.embed_text(
+        text=label_text, model=clip_model, processor=clip_processor
     )
     
     storage_vector: list[float] = merge_two_vectors(vector1=img_vector, vector2=label_vector).squeeze(0).tolist() # get a one dimensional vector
