@@ -11,7 +11,12 @@ import requests
 from sqlmodel import Session, select
 from models.job import Job, JobStatus, JobType
 from models.product import Product, ProductImage
-from models.result import IndexingResult, QueryResult
+from models.result import (
+    IndexingResult,
+    QueryResult,
+    QueryResultCloth,
+    QueryResultProductImage,
+)
 from celery_app import app as celery_app
 from core import storage
 from core.vector_db.img_vector_crud import add_image_embedding
@@ -29,13 +34,17 @@ from utils.helpers import parse_json_response, safe_post_and_parse
 import mimetypes
 import base64
 import logging
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
 
 # celery tasks
 # needs retry logic
+# needs to use 2 buckets names, one for product images, one for query images
+# logs are not showing up in the celery worker
+# we may see conflicts bugs in the future because of filename generator, with only cloth_[N].png we may create varius images filenames with the same name/value
+# job is not being proper saved its state
 @celery_app.task(name="task.cloth_detection_task", bind=True)
 def cloth_detection_task(self, img_id: UUID) -> list[UUID]:
     logger.info(f"Starting cloth detection task for img_id={img_id}")
@@ -45,6 +54,13 @@ def cloth_detection_task(self, img_id: UUID) -> list[UUID]:
                 img_metadata = session.get(ImageFile, img_id)
                 if not img_metadata:
                     raise ValueError(f"No image metadata found for id={img_id}")
+
+                # Idempotency guard
+                if img_metadata.crops:
+                    logger.info(
+                        f"Crops already exist for img_id={img_id}, skipping detection."
+                    )
+                    return [crop.id for crop in img_metadata.crops]
 
                 logger.info("Calling ML service for cloth detection")
                 ml_service_res = send_s3_img_to_service(
@@ -84,6 +100,7 @@ def cloth_detection_task(self, img_id: UUID) -> list[UUID]:
                         original_id=img_metadata.id,  # link back to original
                     )
                     # Append to parent image's crops relationship
+                    # this is not idepotent, as another run for the same image id will append the new crops with the old crops
                     img_metadata.crops.append(cloth_crop_metadata)
 
                 session.add(img_metadata)
@@ -106,12 +123,28 @@ def cloth_detection_task(self, img_id: UUID) -> list[UUID]:
 
 class LabelImgResult(BaseModel):
     img_id: UUID
-    label: StructuredLabel
+    label: dict
     img_vector: List[float]  # adjust type as needed
+    # Make the model JSON serializable
+    model_config = ConfigDict(
+        json_encoders={uuid.UUID: str},
+        str_strip_whitespace=True,
+    )
+
+    # Handle UUID string conversion
+    @field_validator("img_id", mode="before")
+    def parse_uuid(cls, v):
+        if isinstance(v, str):
+            return uuid.UUID(v)
+        return v
+
+    def get_structured_label(self) -> StructuredLabel:
+        """Convert label dict back to StructuredLabel"""
+        return StructuredLabel(**self.label)
 
 
 @celery_app.task(name="task.label_img_task", bind=True)
-def label_img_task(self, img_id: UUID) -> LabelImgResult:
+def label_img_task(self, img_id: UUID) -> dict:
     logger.info(f"Starting labeling task for img_id={img_id}")
     with Session(engine) as session:
         try:
@@ -128,16 +161,17 @@ def label_img_task(self, img_id: UUID) -> LabelImgResult:
                 )
 
                 labelling_res = LabelingResponse.model_validate(res.json())
-                img_metadata.label = labelling_res.label_data
+
+                img_metadata.label = labelling_res.label_data.model_dump()
                 session.add(img_metadata)
 
                 logger.info(f"Successfully labeled image {img_id}")
-                return LabelImgResult(
+                result = LabelImgResult(
                     img_id=img_metadata.id,
-                    label=img_metadata.label,
+                    label=labelling_res.label_data.model_dump(),
                     img_vector=labelling_res.storage_vector,
                 )
-
+                return result.model_dump()
         except IntegrityError as e:
             logger.error(f"IntegrityError in label_img_task: {e}", exc_info=True)
             raise
@@ -156,14 +190,14 @@ class BestMatchingRequest(BaseModel):
 
 class BestMatchingResponse(BaseModel):
     index: int
-    best_match: str  # the label with the highest match
+    text: str  # the label with the highest match
     score: float  # similarity score (0.0 - 1.0)
 
 
 @celery_app.task(name="task.select_img_for_product_task", bind=True)
 def select_img_for_product_task(
-    self, img_labels: List[LabelImgResult], product_id: UUID
-) -> LabelImgResult:
+    self, img_labels_data: List[dict], product_id: UUID
+) -> dict:
     logger.info(f"Starting select_img_for_product_task for product_id={product_id}")
     with Session(engine) as session:
         try:
@@ -172,7 +206,11 @@ def select_img_for_product_task(
                 if not product:
                     raise ValueError(f"No product found for id={product_id}")
 
-                labels = [img.label.to_text() for img in img_labels]
+                img_labels = [
+                    LabelImgResult.model_validate(data) for data in img_labels_data
+                ]
+
+                labels = [img.get_structured_label().to_text() for img in img_labels]
                 logger.info(
                     f"[select_img_for_product_task] Comparing {len(labels)} image labels against product '{product.name}'"
                 )
@@ -191,22 +229,34 @@ def select_img_for_product_task(
                 # hardcoded, prefer: settings.MATCH_SCORE_THRESHOLD
                 if best_match_res.score < 0.7:
                     raise ValueError(
-                        "No substantial product match found in image labels"
+                        f"No substantial product match found in image labels, best_match:{best_match_res.model_dump()} target:{product.name}"
                     )
                 matched_img_label = img_labels[best_match_res.index]
 
-                new_image_product = ProductImage(
-                    product_id=product_id,
-                    image_id=matched_img_label.img_id,
-                    is_primary_crop=True,
-                )
-                session.add(new_image_product)
-                
-                logger.info(
-                    f"[select_img_for_product_task] Linked image {matched_img_label.img_id} as primary crop for product {product_id}"
-                )
+                # idempotency check, if already selected the same product image, skip
+                existing = session.exec(
+                    select(ProductImage).where(
+                        ProductImage.product_id == product_id,
+                        ProductImage.image_id == matched_img_label.img_id,
+                    )
+                ).first()
+                if not existing:
 
-                return matched_img_label
+                    new_image_product = ProductImage(
+                        product_id=product_id,
+                        image_id=matched_img_label.img_id,
+                        is_primary_crop=True,
+                    )
+                    session.add(new_image_product)
+                    logger.info(
+                        f"[select_img_for_product_task] Linked image {matched_img_label.img_id} as primary crop for product {product_id}"
+                    )
+                else:
+                    logger.info(
+                        f"ProductImage ({product_id}, {matched_img_label.img_id}) already exists, skipping"
+                    )
+
+                return matched_img_label.model_dump()
 
         except IntegrityError as e:
             logger.error(
@@ -231,10 +281,12 @@ def select_img_for_product_task(
 # we may have data consistency here, because if this task fail, the whole pipeline is not idempotent.
 @celery_app.task(name="task.save_image_in_vector_db_task", bind=True)
 def save_image_in_vector_db_task(
-    self, selected_result: LabelImgResult, collection_name: str
-) -> UUID:
+    self, selected_result_data: dict, collection_name: str
+) -> str:
 
     try:
+        selected_result = LabelImgResult.model_validate(selected_result_data)
+
         chroma_client = chroma_client_wrapper.get_client()
         img_collection = chroma_client.get_or_create_collection(collection_name)
 
@@ -243,39 +295,84 @@ def save_image_in_vector_db_task(
             logger.info(
                 f"Image {selected_result.img_id} already exists in collection {collection_name}. skipping"
             )
-            return selected_result.img_id
+            return str(selected_result.img_id)
 
         img_collection.add(
             ids=[str(selected_result.img_id)],
             embeddings=[selected_result.img_vector],
-            metadatas=[selected_result.label.model_dump()],
+            metadatas=[selected_result.label],
         )
 
         logger.info(
             f"Successfully saved image {selected_result.img_id} to collection '{collection_name}'"
         )
-        return selected_result.img_id
+        return str(selected_result.img_id)
 
     except ValueError as e:
         logger.error(
-            f"Value error while saving image {selected_result.img_id} to collection '{collection_name}': {e}"
+            f"Value error while saving image {selected_result_data} to collection '{collection_name}': {e}"
         )
         raise
     except ConnectionError as e:
         logger.warning(
-            f"Connection error while saving image {selected_result.img_id}, retrying...: {e}"
+            f"Connection error while saving image {selected_result_data}, retrying...: {e}"
         )
         # retrying logic will be here
         raise self.retry(exc=e)
     except Exception as e:
         logger.exception(
-            f"Unexpected error saving image {selected_result.img_id} to collection '{collection_name}'"
+            f"Unexpected error saving image {selected_result_data} to collection '{collection_name}' {e}"
         )
         raise
 
 
+@celery_app.task(name="task.query_image_in_vector_db_task", bind=True)
+def query_image_in_vector_db_task(
+    self, label_img_result_data: dict, query_result_id: UUID, collection_name: str
+) -> UUID:
+    # if did not find a closer score, return a empty list of products images:
+    logger.info("querying cloth item...")
+    label_img_result = LabelImgResult.model_validate(label_img_result_data)
+
+    chroma_client = chroma_client_wrapper.get_client()
+    img_collection = chroma_client.get_or_create_collection(collection_name)
+
+    with Session(engine) as session:
+        try:
+            with session.begin():
+                result = img_collection.query(
+                    query_embeddings=[label_img_result.img_vector], n_results=3
+                )
+                ids = result["ids"][0]
+                if not result["distances"]:
+                    raise ValueError(
+                        "No distances founded in the query result for similar images"
+                    )
+                # here we can guard later fo only get a valid result based in a minimal score
+                distances = result["distances"][0]
+
+                cloth = QueryResultCloth(
+                    query_result_id=query_result_id, crop_img_id=label_img_result.img_id
+                )
+                session.add(cloth)
+
+                for idx, id_str in enumerate(ids):
+                    product_image = QueryResultProductImage(
+                        cloth_id=cloth.id,
+                        matched_image_id=UUID(id_str),
+                        score=1 - distances[idx],
+                        rank=idx + 1,
+                    )
+                    session.add(product_image)
+
+                return cloth.id
+
+        except Exception as e:
+            raise
+
+
 @celery_app.task(name="task.finalize_orchestrator_task", bind=True)
-def finalize_orchestrator_task(
+def finalize_indexing_task(
     self,
     selected_img_id: UUID,
     created_crops: list[UUID],
@@ -291,17 +388,14 @@ def finalize_orchestrator_task(
                 if not job:
                     raise ValueError("No Job founded")
 
-                if job.type == JobType.INDEXING:
-                    idx_result = IndexingResult(
-                        job_id=job.id,
-                        selected_crop_id=selected_img_id,
-                        created_crop_ids=created_crops,
-                        model_version=model_version,
-                    )
-                    session.add(idx_result)
-                    return idx_result.id
-                else:
-                    return uuid.uuid4()
+                idx_result = IndexingResult(
+                    job_id=job.id,
+                    selected_crop_id=selected_img_id,
+                    created_crop_ids=[str(c) for c in created_crops],
+                    model_version=model_version,
+                )
+                session.add(idx_result)
+                return idx_result.id
 
         except Exception as e:
             raise
@@ -347,13 +441,17 @@ def build_dynamic_chord(
     return chain(entry_task, _start_dynamic_chord.s())
 
 
-@celery_app.task(name="task.start_labeling_chord", bind=True)
-def start_labeling_chord(self, crop_ids, product_id, job_id):
+@celery_app.task(name="task.start_indexing_chord", bind=True)
+def start_indexing_chord(self, crop_ids, product_id, job_id):
     header = [label_img_task.s(c) for c in crop_ids]
     body = chain(
         select_img_for_product_task.s(product_id),
         save_image_in_vector_db_task.s(settings.CHROMA_PRODUCT_IMAGE_COLLECTION),
-        finalize_orchestrator_task.s(job_id, settings.MODEL_VERSION),
+        finalize_indexing_task.s(
+            created_crops=crop_ids,
+            job_id=job_id,
+            model_version=settings.MODEL_VERSION,
+        ),
     )
     return chord(header)(body)
 
@@ -386,7 +484,75 @@ def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
 
                 workflow = chain(
                     cloth_detection_task.s(img_id),
-                    start_labeling_chord.s(product_id, job_id),
+                    start_indexing_chord.s(product_id, job_id),
+                )
+                workflow.apply_async(
+                    # this link error does not works for some nested expections, needs to fix, example(ValueError: No substantial product match found in image labels)
+                    link_error=update_job_status_task.s(
+                        job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
+                    )
+                )
+                return job_id
+
+        except Exception as e:
+            raise
+
+
+@celery_app.task(name="task.start_querying_pipeline_task", bind=True)
+def start_querying_pipeline_task(
+    self,
+    crops_id: list[UUID],
+    job_id: UUID,
+    query_result_id: UUID,
+    collection_name: str,
+):
+
+    per_crop = [
+        chain(
+            label_img_task.s(crops_id),
+            query_image_in_vector_db_task.s(
+                query_result_id=query_result_id, collection_name=collection_name
+            ),
+        )
+    ]
+
+    return chain(
+        group(per_crop),
+        update_job_status_task.s(
+            job_id=job_id, status=JobStatus.COMPLETED, message="Query Completed"
+        ),
+    )
+
+
+def querying_orchestrator_task(self, job_id: UUID) -> UUID:
+    logger.info("starting querying taks")
+
+    with Session(engine) as session:
+        try:
+            with session.begin():
+                job = session.get(Job, job_id)
+                if not job:
+                    raise ValueError("No job founded for this id")
+                img_id = job.input_img_id
+
+                new_query = QueryResult(
+                    job_id=job_id, model_version=settings.MODEL_VERSION
+                )
+                session.add(new_query)
+
+                update_job_status_task.delay(
+                    job_id=job_id,
+                    status=JobStatus.STARTED,
+                    message="Starting to query...",
+                )
+
+                workflow = chain(
+                    cloth_detection_task.s(img_id),
+                    start_querying_pipeline_task.s(
+                        job_id=job_id,
+                        query_result_id=new_query,
+                        collection_name=settings.CHROMA_PRODUCT_IMAGE_COLLECTION,
+                    ),
                 )
                 workflow.apply_async(
                     link_error=update_job_status_task.s(

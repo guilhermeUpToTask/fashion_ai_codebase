@@ -7,8 +7,10 @@ from sqlmodel import (
     Field,
     Column,
 )
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from models.label import StructuredLabel
+
+
 
 
 class ImageFile(SQLModel, table=True):
@@ -19,7 +21,8 @@ class ImageFile(SQLModel, table=True):
     width: int | None
     height: int | None
     format: str | None
-    label: StructuredLabel | None = Field(default=None, sa_column=Column(JSON))
+    #needs to create a new table for label later on
+    label: Dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(

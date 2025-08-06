@@ -5,6 +5,8 @@ from PIL import Image
 from typing import Annotated
 from fastapi import APIRouter, File, HTTPException, Header, UploadFile
 import uuid
+
+from sqlmodel import select
 from models.job import Job, JobStatus, JobType
 from models.product import Product, ProductImage
 from worker.tasks import indexing_orchestrator_task
@@ -108,6 +110,7 @@ async def upload_image_for_product(
         session.commit()
         session.refresh(img_metadata)
         
+        #maybe needs to change here to create a more explicit relationship
         img_product_link = ProductImage(image_id=img_metadata.id, product_id=product_id)
         session.add(img_product_link)
         session.commit()
@@ -171,6 +174,13 @@ async def query_new_image(
 
 
 
+
+@router.get('/all')
+async def get_all_images(session:SessionDep):
+    statement = select(ImageFile)
+    result = session.exec(statement).all()
+    return list(result)
+    
 
 @router.get("/job/status/{job_id}")
 async def get_job_status(job_id: uuid.UUID, session: SessionDep) -> JobStatus:
