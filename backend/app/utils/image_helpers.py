@@ -9,8 +9,14 @@ from uuid import UUID
 import PIL
 import requests
 from PIL import Image, UnidentifiedImageError
-from logging import Logger
+import logging
 from core import storage
+
+
+logger = logging.getLogger(__name__)
+
+
+# does those helpes needs to be async?
 
 def send_img_request(
     *, img_path: str, service_url: str, timeout: int
@@ -106,7 +112,7 @@ def parse_json(logger, response: requests.Response, expected_type=list):
     
 
 #later we can create a process image helper that will use this helper and other process like decoding
-def create_and_verify_pil_img(img_bytes:BytesIO, logger: Logger) -> Image.Image:
+def create_and_verify_pil_img(img_bytes:BytesIO) -> Image.Image:
     try:
         img_bytes.seek(0)
         img = Image.open(img_bytes)
@@ -120,8 +126,10 @@ def create_and_verify_pil_img(img_bytes:BytesIO, logger: Logger) -> Image.Image:
     except OSError as e:
         logger.error("OS error while processing image: %s", e, exc_info=True)
         raise
+
     
-def build_image_filename(idx:int, img:Image.Image, prefix:str='image') -> str:
+    
+def build_image_filename(img:Image.Image, id: UUID, idx:int | None = None, prefix:str='image') -> str:
     """
     Generate a filename for an image based on its index, format, and optional prefix.
 
@@ -134,4 +142,6 @@ def build_image_filename(idx:int, img:Image.Image, prefix:str='image') -> str:
         A string filename like "prefix_0.png".
     """
     ext = (img.format or "PNG").lower()
-    return f"{prefix}_{idx}.{ext}"
+    idx_str = f"__{idx}" if idx else ""
+    id_str = f"__{id}"
+    return f"{prefix}{idx_str}{id_str}.{ext}"

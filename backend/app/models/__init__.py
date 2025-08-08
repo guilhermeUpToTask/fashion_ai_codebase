@@ -6,5 +6,5 @@ from .image import ImageFile
 
 # Import models that have foreign keys to the above tables
 from .product import Product, ProductImage
-from .result import IndexingResult, QueryResult, QueryResultImage
+from .result import IndexingResult, QueryResult, QueryResultCloth, QueryResultProductImage
 from .job import Job

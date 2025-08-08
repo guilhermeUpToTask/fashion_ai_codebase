@@ -1,6 +1,13 @@
 from fastapi import APIRouter
 from api.routes import users, auth, products
-from api.routes.images import images
+from api.routes import images
+
+# routes/
+# ├── __init__.py
+# ├── jobs.py          ← Dedicated jobs routes
+# ├── images.py        ← Image CRUD operations
+# ├── products.py      ← Product CRUD operations
+
 
 api_router = APIRouter()
 api_router.include_router(auth.router)

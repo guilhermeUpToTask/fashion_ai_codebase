@@ -46,6 +46,8 @@ class Product(ProductBase, table=True):
     product_images: List["ProductImage"] = Relationship(back_populates="product")
 
 
+
+#this here needs to be deleted in cascade, within the image img itself and the image object on the db
 class ProductImage(SQLModel, table=True):
     __tablename__ = "product_images"  # type: ignore
     # Foreign keys to the two entities it connects.

@@ -58,6 +58,22 @@ class Job(SQLModel, table=True):
         sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc)},
     )
 
+class JobResponse(SQLModel):
+    job_id: uuid.UUID
+    status: JobStatus
+    job_type: JobType
+    message: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    result: Optional[dict] = None  # Only present when completed
+
+    # Frontend-friendly fields
+    is_completed: bool
+    is_failed: bool
+    is_processing: bool
+
+
 class JobPublic(SQLModel):
     id: uuid.UUID
     type: JobType

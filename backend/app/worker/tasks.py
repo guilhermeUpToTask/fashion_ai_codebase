@@ -1,13 +1,9 @@
-# update the database from the worker tasks
 from io import BytesIO
-import time
-from typing import List, cast
+from typing import List
 from uuid import UUID
 import uuid
-from celery import Task, chain, chord, group
-from celery.canvas import Signature
+from celery import chain, chord, group
 from psycopg2 import IntegrityError
-import requests
 from sqlmodel import Session, select
 from models.job import Job, JobStatus, JobType
 from models.product import Product, ProductImage
@@ -19,7 +15,6 @@ from models.result import (
 )
 from celery_app import app as celery_app
 from core import storage
-from core.vector_db.img_vector_crud import add_image_embedding
 from models.image import ImageFile
 from models.label import LabelingResponse, StructuredLabel
 from core.vector_db.chroma_db import chroma_client_wrapper
@@ -31,7 +26,6 @@ from utils.image_helpers import (
     send_s3_img_to_service,
 )
 from utils.helpers import parse_json_response, safe_post_and_parse
-import mimetypes
 import base64
 import logging
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
@@ -417,30 +411,6 @@ def update_job_status_task(
         session.commit()
 
 
-# later we will test this aprouch after we tested the prototype, then we can refactor using this function
-def build_dynamic_chord(
-    entry_task: Signature, fanout_task: Signature, body_chain: Signature
-) -> Signature:
-    """
-    Builds a dynamic pipeline:
-    1. Runs entry_task → produces a list of items.
-    2. Fans out each item using fanout_task.
-    3. Aggregates the results and runs the body_chain.
-
-    Args:
-        entry_task: Task that produces a list of items for the fan-out.
-        fanout_task: Task to run in parallel for each item.
-        body_chain: Chain of tasks to run after fan-out results are collected.
-    """
-
-    @celery_app.task(bind=True)
-    def _start_dynamic_chord(self, items):
-        header = [fanout_task.clone(args=[item]) for item in items]
-        return chord(header)(body_chain)
-
-    return chain(entry_task, _start_dynamic_chord.s())
-
-
 @celery_app.task(name="task.start_indexing_chord", bind=True)
 def start_indexing_chord(self, crop_ids, product_id, job_id):
     header = [label_img_task.s(c) for c in crop_ids]
@@ -501,29 +471,26 @@ def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
 @celery_app.task(name="task.start_querying_pipeline_task", bind=True)
 def start_querying_pipeline_task(
     self,
-    crops_id: list[UUID],
+    crop_ids: list[UUID],
     job_id: UUID,
     query_result_id: UUID,
     collection_name: str,
 ):
 
-    per_crop = [
+    per_crop_chains = [
         chain(
-            label_img_task.s(crops_id),
+            label_img_task.s(crop_id),
             query_image_in_vector_db_task.s(
                 query_result_id=query_result_id, collection_name=collection_name
             ),
         )
+        for crop_id in crop_ids
     ]
 
-    return chain(
-        group(per_crop),
-        update_job_status_task.s(
-            job_id=job_id, status=JobStatus.COMPLETED, message="Query Completed"
-        ),
-    )
+    return group(*per_crop_chains).apply_async()
 
-
+# For consistency, also update the indexing orchestrator to follow the same pattern
+@celery_app.task(name="task.querying_orchestrator_task", bind=True)
 def querying_orchestrator_task(self, job_id: UUID) -> UUID:
     logger.info("starting querying taks")
 
@@ -550,8 +517,13 @@ def querying_orchestrator_task(self, job_id: UUID) -> UUID:
                     cloth_detection_task.s(img_id),
                     start_querying_pipeline_task.s(
                         job_id=job_id,
-                        query_result_id=new_query,
+                        query_result_id=new_query.id,
                         collection_name=settings.CHROMA_PRODUCT_IMAGE_COLLECTION,
+                    ),
+                    update_job_status_task.si(
+                        job_id=job_id,
+                        status=JobStatus.COMPLETED,
+                        message="Query Completed",
                     ),
                 )
                 workflow.apply_async(

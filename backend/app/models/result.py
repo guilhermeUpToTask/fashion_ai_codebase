@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional
 from pydantic import ConfigDict
-from sqlmodel import JSON, Field, PrimaryKeyConstraint, SQLModel, Column, Relationship
+from sqlmodel import JSON, Field, PrimaryKeyConstraint, SQLModel, Column, Relationship, UniqueConstraint
 
 from models.product import Product, ProductImage
 
@@ -21,9 +21,10 @@ class IndexingResult(SQLModel, table=True):
     
 class QueryResultProductImage(SQLModel, table=True):
     __tablename__= 'query_result_product_images' #type: ignore
-    __table_args__ = (PrimaryKeyConstraint("cloth_id", "matched_image_id"),)
+    __table_args__ = (UniqueConstraint("cloth_id", "matched_image_id"),)
     
-    cloth_id: uuid.UUID = Field(foreign_key="query_result_cloth.id")
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    cloth_id: uuid.UUID = Field(foreign_key="query_result_cloths.id")
     matched_image_id: uuid.UUID =  Field(foreign_key="images.id")
     score: float
     rank: int
