@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlmodel import select
 
 from api.deps import SessionDep, CurrentUser
-from models.product import ProductCreate, ProductUpdate
+from models.product import ProductCreate, ProductImage, ProductUpdate
 from models import Product
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -98,3 +98,9 @@ async def delete_product(
     session.delete(product)
     session.commit()
     return None
+
+@router.get("/images/all")
+async def get_all_products_images(session: SessionDep):
+    statement = select(ProductImage)
+    result = session.exec(statement).all()
+    return list(result)

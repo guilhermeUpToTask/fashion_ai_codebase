@@ -8,7 +8,7 @@ from pydantic import ConfigDict
 
 class JobType(str, Enum):
     INDEXING = "indexing"
-    QUERY = "query"
+    QUERYING = "querying"
 
 
 class JobStatus(str, Enum):

@@ -467,7 +467,7 @@ def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
         except Exception as e:
             raise
 
-
+# For consistency, also update the indexing orchestrator to follow the same pattern
 @celery_app.task(name="task.start_querying_pipeline_task", bind=True)
 def start_querying_pipeline_task(
     self,

@@ -1,20 +1,23 @@
-
-
 # routes/jobs.py - Dedicated job management
 from io import BytesIO
 import logging
 from fastapi import APIRouter, HTTPException, Header, UploadFile, File
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 import uuid
 from PIL import Image
+from sqlmodel import select
 from backend.app.api.deps import SessionDep
 from backend.app.core import storage
 from backend.app.core.config import settings
 from backend.app.models.image import ImageFile
 from backend.app.models.job import Job, JobStatus, JobResponse, JobType
 from backend.app.models.product import Product, ProductImage
-from backend.app.utils.image_helpers import build_image_filename, create_and_verify_pil_img
-from backend.app.worker.tasks import indexing_orchestrator_task
+from backend.app.models.result import IndexingResult, QueryResult
+from backend.app.utils.image_helpers import (
+    build_image_filename,
+    create_and_verify_pil_img,
+)
+from backend.app.worker.tasks import indexing_orchestrator_task, querying_orchestrator_task
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -26,6 +29,8 @@ MAX_RESOLUTION = 4096
 ALLOWED_TYPES = {"image/jpeg", "image/png"}
 
 # Helpers
+
+#this should be in a helper file
 async def read_and_validate_file(
     file: UploadFile, chunk_size: int, max_size: int
 ) -> BytesIO:
@@ -47,34 +52,26 @@ async def read_and_validate_file(
     return stream
 
 
-
-def get_extesion_type_for_img(img: Image.Image) -> str:
-    image_format = img.format
-    if not image_format:
-        raise ValueError("Could not determine image format.")
-    file_extension = image_format.lower()
-    if file_extension == "jpeg":
-        file_extension = "jpg"
-    return file_extension
-
-async def procces_image(img_file: UploadFile, session: SessionDep) -> ImageFile:
+async def procces_image(
+    img_file: UploadFile, session: SessionDep, img_type: str, bucket_name: str
+) -> ImageFile:
     chunk_size = 1024 * 1024
     img_stream = await read_and_validate_file(
         file=img_file, chunk_size=chunk_size, max_size=settings.MAX_IMAGE_SIZE_BYTES
     )
-    
+
     pil_img = create_and_verify_pil_img(img_stream)
-    
+
     new_img_id = uuid.uuid4()
-    
-    img_filename = build_image_filename(img=pil_img, id=new_img_id, prefix="product") 
-    
+
+    img_filename = build_image_filename(img=pil_img, id=new_img_id, prefix=img_type)
+
     s3_path = storage.upload_file_to_s3(
         file_obj=img_stream,
-        bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
+        bucket_name=bucket_name,
         object_name=img_filename,
     )
-    img_metadata = ImageFile(
+    return ImageFile(
         id=new_img_id,
         filename=img_filename,
         width=pil_img.width,
@@ -82,76 +79,78 @@ async def procces_image(img_file: UploadFile, session: SessionDep) -> ImageFile:
         format=pil_img.format,
         path=s3_path,
     )
-    # No original_id - this is an original image
-    return img_metadata
 
 
-@router.post("/{product_id}/upload")
-async def upload_image_for_product(
-    session: SessionDep,
-    content_length: Annotated[int, Header()],
-    image_file: Annotated[UploadFile, File(description="Product image to be indexed")],
-    product_id: uuid.UUID,
-) -> uuid.UUID:
-    """
-    Accepts an image, uploads it to storage, creates a job record in the database,
-    and starts the asynchronous indexing pipeline
-    """
+async def generate_query_result(session: SessionDep, job_id: uuid.UUID) -> dict:
 
-    if image_file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=415,
-            detail=f"Invalid file type. Allowed types are: {', '.join(ALLOWED_TYPES)}",
-        )
-    if content_length > settings.MAX_IMAGE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Maximum size is {settings.MAX_IMAGE_SIZE_BYTES // 1024 // 1024}MB.",
-        )
+    query_result = session.exec(
+        select(QueryResult).where(QueryResult.job_id == job_id)
+    ).first()
+    if not query_result:
+        raise ValueError("No query result founded for this job id")
 
-    try:
-        img_metadata = await procces_image(img_file=image_file, session=session)
-        session.add(img_metadata)
-        session.commit()
-        session.refresh(img_metadata)
+    cloths_data = []
+    for cloth in query_result.cloths:
+        similar_products_imgs = cloth.similar_products
 
-        # maybe needs to change here to create a more explicit relationship
-        img_product_link = ProductImage(image_id=img_metadata.id, product_id=product_id)
-        session.add(img_product_link)
-        session.commit()
+        cloth_matches = []
 
-        return img_metadata.id
+        for similar_img in similar_products_imgs:
+            # Join with ProductImage and Product for full details
+            product_image = session.exec(
+                select(ProductImage).where(
+                    ProductImage.image_id == similar_img.matched_image_id
+                )
+            ).first()
 
-    except Exception as e:
-        # Log the error later
-        raise HTTPException(
-            status_code=500, detail=f"Failed to upload image to storage: {e}"
-        )
+            match_data = {
+                "image_id": str(similar_img.matched_image_id),
+                "score": similar_img.score,
+                "rank": similar_img.rank,
+            }
 
+            if product_image and product_image.product:
+                match_data.update(
+                    {
+                        "product_id": str(product_image.product_id),
+                        "product_name": product_image.product.name,
+                        "product_description": product_image.product.description,
+                        # Add image URL if you have it
+                    }
+                )
 
-@router.post("/{product_id}/{img_id}/index", status_code=202)
-async def index_product_image(
-    product_id: uuid.UUID, img_id: uuid.UUID, session: SessionDep
-) -> uuid.UUID:
-    product = session.get(Product, product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="No product founded for giving id")
-    img_metadata = session.get(ImageFile, img_id)
-    if not img_metadata:
-        raise HTTPException(status_code=404, detail="No Image founded for giving id")
-    new_job = Job(
-        input_img_id=img_id,
-        input_product_id=product_id,
-        type=JobType.INDEXING,
-        status=JobStatus.QUEUED,
-    )
-    session.add(new_job)
-    session.commit()
+            cloth_matches.append(match_data)
 
-    indexing_orchestrator_task.delay(new_job.id)
-    return new_job.id
+        cloth_data = {
+            "cloth_id": str(cloth.id),
+            "crop_img_id": str(cloth.crop_img_id),
+            "matched_images": cloth_matches,
+        }
+        cloths_data.append(cloth_data)
+
+    return {
+        "type": "querying",
+        "model_version": query_result.model_version,
+        "cloths": cloths_data,
+    }
 
 
+async def generate_indexing_result(session: SessionDep, job_id: uuid.UUID) -> dict:
+    indexing_result = session.exec(
+        select(IndexingResult).where(IndexingResult.job_id == job_id)
+    ).first()
+    if not indexing_result:
+        raise ValueError("No Indexing result founded for this job_id")
+
+    return {
+        "type": "indexing",
+        "selected_crop_id": str(indexing_result.selected_crop_id),
+        "total_crops_created": len(indexing_result.created_crop_ids),
+        "model_version": indexing_result.model_version,
+    }
+
+
+# Endpoits
 @router.post("/indexing")
 async def create_indexing_job(
     session: SessionDep,
@@ -163,7 +162,6 @@ async def create_indexing_job(
     Create a new indexing job.
     Handle image upload, create job, start orchestrator"""
 
-    
     if image_file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=415,
@@ -177,31 +175,36 @@ async def create_indexing_job(
     product = session.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="No product founded for giving id")
-        
-    
+
     try:
         with session.begin():
-            img_metadata = await procces_image(img_file=image_file,session=session)
+            img_metadata = await procces_image(
+                img_file=image_file,
+                session=session,
+                img_type="product",
+                bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
+            )
             session.add(img_metadata)
             session.flush()
-            
-            img_product_link = ProductImage(image_id=img_metadata.id, product_id=product_id)
+
+            img_product_link = ProductImage(
+                image_id=img_metadata.id, product_id=product_id
+            )
             session.add(img_product_link)
             session.flush()
-            
+
             job = Job(
                 type=JobType.INDEXING,
                 status=JobStatus.QUEUED,
                 input_img_id=img_metadata.id,
-                processing_details="Job queued for processing"
-                
+                processing_details="Job queued for processing",
             )
             session.add(job)
             session.flush()
-            
+
             indexing_orchestrator_task.delay(job.id)
-            
-            #we can refactor later to spread the job args and join the bools
+
+            # we can refactor later to spread the job args and join the bools
             return JobResponse(
                 job_id=job.id,
                 status=job.status,
@@ -210,37 +213,117 @@ async def create_indexing_job(
                 created_at=job.created_at,
                 is_completed=False,
                 is_failed=False,
-                is_processing=False #still queued
+                is_processing=False,  # still queued
             )
-            
+
     except Exception as e:
         logger.error(f"Error creating indexing job: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create indexing job")
-    
-    # Handle image upload, create job, start orchestrator
-    pass
+
 
 @router.post("/querying")
 async def create_querying_job(
-    image: UploadFile = File(...),
-    session: SessionDep
+    session: SessionDep,
+    content_length: Annotated[int, Header()],
+    image_file: Annotated[UploadFile, File(description="Product image to be indexed")],
 ) -> JobResponse:
     """
     Create a new querying job.
     Handle image upload, create job, start orchestrator
     """
 
+    # this can be refactored later by a injected dependency
+    if image_file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Invalid file type. Allowed types are: {', '.join(ALLOWED_TYPES)}",
+        )
+    if content_length > settings.MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {settings.MAX_IMAGE_SIZE_BYTES // 1024 // 1024}MB.",
+        )
 
-    pass
+    try:
+        with session.begin():
+            img_metadata = await procces_image(
+                img_file=image_file,
+                session=session,
+                img_type="query",
+                bucket_name=settings.S3_QUERY_BUCKET_NAME,
+            )
+            session.add(img_metadata)
+            session.flush()
+
+            job = Job(
+                type=JobType.QUERYING,
+                status=JobStatus.QUEUED,
+                input_img_id=img_metadata.id,
+                processing_details="Job queued for processing",
+            )
+            session.add(job)
+            session.flush()
+
+            querying_orchestrator_task.delay(job.id)
+            
+            return JobResponse(
+                job_id=job.id,
+                status=job.status,
+                job_type=job.type,
+                message=job.processing_details,
+                created_at=job.created_at,
+                is_completed=False,
+                is_failed=False,
+                is_processing=False,
+            )
+
+    except Exception as e:
+        logger.error(f"Error creating query job: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create query job")
+
 
 @router.get("/{job_id}/status")
 async def get_job_status(
     job_id: uuid.UUID,
     session: SessionDep,
-    include_full_results: bool = False
 ) -> JobResponse:
-    """Get job status and results"""
-    pass
+    """
+    Get job status with optional results - optimized for frontend polling
+
+    """
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="No job found for this id")
+
+    # Base response
+    response = JobResponse(
+        job_id=job.id,
+        status=job.status,
+        job_type=job.type,
+        message=job.processing_details,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        is_completed=job.status == JobStatus.COMPLETED,
+        is_failed=job.status == JobStatus.FAILED,
+        is_processing=job.status in [JobStatus.QUEUED, JobStatus.STARTED],
+    )
+
+    if job.status == JobStatus.STARTED or job.status == JobStatus.FAILED:
+        return response
+
+    if job.status == JobStatus.COMPLETED:
+
+        if job.type == JobType.QUERYING:
+            response.result = await generate_query_result(
+                session=session, job_id=job_id
+            )
+        elif job.type == JobType.INDEXING:
+            response.result = await generate_indexing_result(
+                session=session, job_id=job_id
+            )
+
+    return response
+
 
 @router.get("/")
 async def list_jobs(
@@ -248,15 +331,17 @@ async def list_jobs(
     status: Optional[JobStatus] = None,
     job_type: Optional[JobType] = None,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
 ) -> List[JobResponse]:
     """List jobs with optional filtering"""
-    pass
+    return []
+
 
 @router.delete("/{job_id}")
 async def cancel_job(job_id: uuid.UUID, session: SessionDep):
     """Cancel a running job"""
     pass
+
 
 @router.post("/{job_id}/retry")
 async def retry_failed_job(job_id: uuid.UUID, session: SessionDep):
