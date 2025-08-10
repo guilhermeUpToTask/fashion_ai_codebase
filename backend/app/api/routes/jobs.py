@@ -1,7 +1,7 @@
 # routes/jobs.py - Dedicated job management
 from io import BytesIO
 import logging
-from fastapi import APIRouter, HTTPException, Header, UploadFile, File
+from fastapi import APIRouter, HTTPException, Header, Path, Query, UploadFile, File, status
 from typing import Annotated, List, Optional
 import uuid
 from PIL import Image
@@ -13,10 +13,9 @@ from models.image import ImageFile
 from models.job import Job, JobStatus, JobResponse, JobType
 from models.product import Product, ProductImage
 from models.result import IndexingResult, QueryResult
-from utils.image_helpers import (
-    build_image_filename,
-    create_and_verify_pil_img,
-)
+from utils.image_helpers import build_image_filename, create_and_verify_pil_img
+
+from utils.helpers import read_and_validate_file
 from worker.tasks import indexing_orchestrator_task, querying_orchestrator_task
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -28,30 +27,8 @@ logger = logging.getLogger(__name__)
 MAX_RESOLUTION = 4096
 ALLOWED_TYPES = {"image/jpeg", "image/png"}
 
+
 # Helpers
-
-#this should be in a helper file
-async def read_and_validate_file(
-    file: UploadFile, chunk_size: int, max_size: int
-) -> BytesIO:
-    stream = BytesIO()
-    size = 0
-
-    while chunk := await file.read(chunk_size):
-        size += len(chunk)
-        if size > max_size:
-            raise ValueError(
-                f"File is too large. Maximum size is {max_size // 1024 // 1024}MB."
-            )
-        stream.write(chunk)
-
-    if not stream.getbuffer().nbytes:
-        raise ValueError(f"Empty file uploaded")
-
-    stream.seek(0)
-    return stream
-
-#this should be a helper aswell, we will reutilize in the orchestrator pipeline
 async def procces_image(
     img_file: UploadFile, session: SessionDep, img_type: str, bucket_name: str
 ) -> ImageFile:
@@ -151,16 +128,29 @@ async def generate_indexing_result(session: SessionDep, job_id: uuid.UUID) -> di
 
 
 # Endpoits
-@router.post("/indexing")
+# TODO: create a a list of images to be indexed
+@router.post(
+    "/indexing",
+    response_model=JobResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        413: {"description": "File too large"},
+        415: {"description": "Unsupported media type"},
+        404: {"description": "Product not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def create_indexing_job(
     session: SessionDep,
-    content_length: Annotated[int, Header()],
+    content_length: Annotated[
+        int, Header(description="Content-Length of the uploaded file")
+    ],
     image_file: Annotated[UploadFile, File(description="Product image to be indexed")],
-    product_id: uuid.UUID,
+    product_id: Annotated[uuid.UUID, Query(description="ID of the product to index")],
 ) -> JobResponse:
     """
-    Create a new indexing job.
-    Handle image upload, create job, start orchestrator"""
+    Create a new indexing job. Handles image upload, validates and starts processing.
+    """
 
     if image_file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -174,7 +164,7 @@ async def create_indexing_job(
         )
     product = session.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="No product founded for giving id")
+        raise HTTPException(status_code=404, detail="No product found for given id")
 
     try:
         with session.begin():
@@ -215,21 +205,33 @@ async def create_indexing_job(
                 is_failed=False,
                 is_processing=False,  # still queued
             )
-
+    except ValueError as e:
+        logger.warning(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating indexing job: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create indexing job")
 
 
-@router.post("/querying")
+@router.post(
+    "/querying",
+    response_model=JobResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        413: {"description": "File too large"},
+        415: {"description": "Unsupported media type"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def create_querying_job(
     session: SessionDep,
-    content_length: Annotated[int, Header()],
-    image_file: Annotated[UploadFile, File(description="Product image to be indexed")],
+    content_length: Annotated[
+        int, Header(description="Content-Length of the uploaded file")
+    ],
+    image_file: Annotated[UploadFile, File(description="Product image to be queried")],
 ) -> JobResponse:
     """
-    Create a new querying job.
-    Handle image upload, create job, start orchestrator
+    Create a new querying job. Handles image upload, validates and starts processing.
     """
 
     # this can be refactored later by a injected dependency
@@ -265,7 +267,7 @@ async def create_querying_job(
             session.flush()
 
             querying_orchestrator_task.delay(job.id)
-            
+
             return JobResponse(
                 job_id=job.id,
                 status=job.status,
@@ -276,26 +278,35 @@ async def create_querying_job(
                 is_failed=False,
                 is_processing=False,
             )
-
+    except ValueError as e:
+        logger.warning(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating query job: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create query job")
 
 
-@router.get("/{job_id}/status")
+@router.get(
+    "/{job_id}/status",
+    response_model=JobResponse,
+    responses={
+        404: {"description": "Job not found"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_job_status(
-    job_id: uuid.UUID,
+    job_id: Annotated[uuid.UUID, Path(description="ID of the job")],
     session: SessionDep,
 ) -> JobResponse:
     """
-    Get job status with optional results - optimized for frontend polling
-
+    Get job status with optional results - optimized for frontend polling.
     """
     job = session.get(Job, job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="No job found for this id")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No job found for this id"
+        )
 
-    # Base response
     response = JobResponse(
         job_id=job.id,
         status=job.status,
@@ -308,33 +319,40 @@ async def get_job_status(
         is_processing=job.status in [JobStatus.QUEUED, JobStatus.STARTED],
     )
 
-    if job.status == JobStatus.STARTED or job.status == JobStatus.FAILED:
+    if job.status in [JobStatus.STARTED, JobStatus.FAILED]:
         return response
 
     if job.status == JobStatus.COMPLETED:
-
         if job.type == JobType.QUERYING:
-            response.result = await generate_query_result(
-                session=session, job_id=job_id
-            )
+            response.result = await generate_query_result(session=session, job_id=job_id)
         elif job.type == JobType.INDEXING:
-            response.result = await generate_indexing_result(
-                session=session, job_id=job_id
-            )
+            response.result = await generate_indexing_result(session=session, job_id=job_id)
 
     return response
 
 
-@router.get("/")
+@router.get(
+    "/",
+    response_model=List[Job],
+    responses={500: {"description": "Internal server error"}},
+)
 async def list_jobs(
     session: SessionDep,
-    status: Optional[JobStatus] = None,
-    job_type: Optional[JobType] = None,
-    limit: int = 50,
-    offset: int = 0,
+    status: Optional[JobStatus] = Query(None, description="Filter by job status"),
+    job_type: Optional[JobType] = Query(None, description="Filter by job type"),
+    limit: int = Query(50, ge=1, le=100, description="Number of jobs to return"),
+    offset: int = Query(0, ge=0, description="Number of jobs to skip"),
 ) -> List[Job]:
-    """List jobs with optional filtering"""
-    results = session.exec(select(Job).limit(limit).offset(offset)).all()
+    """
+    List jobs with optional filtering.
+    """
+    query = select(Job)
+    if status:
+        query = query.where(Job.status == status)
+    if job_type:
+        query = query.where(Job.type == job_type)
+
+    results = session.exec(query.limit(limit).offset(offset)).all()
 
     return list(results)
 

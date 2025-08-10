@@ -14,10 +14,10 @@
 
 | Priority | Step | Action | Status |
 | :--- | :--- | :--- | :--- |
-| **CRITICAL** | 1.1 | **Refactor to Job/Result Model:** Implement `Job`, `IndexingResult`, and `QueryResult` tables to separate process state from data artifacts. | ⏳ In Progress |
+| **CRITICAL** | 1.1 | **Refactor to Job/Result Model:** Implement `Job`, `IndexingResult`, and `QueryResult` tables to separate process state from data artifacts. |  ✅ Done |
 | **HIGH** | 1.2 | **Establish Test Suite:** Write unit tests for core CRUD operations and integration tests for auth and job submission APIs, mocking external services. | 🔵 To Do |
-| **HIGH** | 1.3 | **Implement ML Service Lifespan:** Ensure models are loaded cleanly using FastAPI's `lifespan` context manager for robust resource management. | ✅ Done |
-| **MEDIUM** | 1.4 | **Address Security Vulnerabilities:** Sanitize filenames on upload and configure stricter CORS policies for production. | 🔵 To Do |
+| **HIGH** | 1.3 | **Implement ML Service Lifespan:** Ensure models are loaded cleanly using FastAPI's `lifespan` context manager for robust resource management. | 🔵 To Do |
+| **MEDIUM** | 1.4 | **Address Security Vulnerabilities:** Sanitize filenames on upload and configure stricter CORS policies for production. |  ✅ Done|
 | **MEDIUM** | 1.5 | **Fix Dependency Management:** Clean up and pin all versions in `requirements.txt` to ensure reproducible builds. | 🔵 To Do |
 
 ---
@@ -55,6 +55,7 @@
 
 | Priority | Step | Action | Status |
 | :--- | :--- | :--- | :--- |
+add global exception handling middleware in FastAPI
 | **HIGH** | 4.1 | **Implement CI/CD Pipeline:** Automate testing, Docker image builds, and pushes to a container registry using GitHub Actions. | 🔵 To Do |
 | **HIGH** | 4.2 | **Infrastructure as Code (IaC) & Deployment:** Write Terraform/CloudFormation scripts to deploy the application stack to a cloud orchestrator (AWS ECS/EKS). | 🔵 To Do |
 | **MEDIUM** | 4.3 | **Implement Resource Management:** Configure Docker resource limits and apply them in the cloud to ensure stability and prevent DoS attacks. | 🔵 To Do |

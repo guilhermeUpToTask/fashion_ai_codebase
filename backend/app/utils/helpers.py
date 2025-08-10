@@ -1,3 +1,4 @@
+from io import BytesIO
 from logging import Logger
 import logging
 from typing import Type, TypeVar
@@ -5,8 +6,11 @@ from typing import Type, TypeVar
 from fastapi import UploadFile
 from pydantic import BaseModel, TypeAdapter, ValidationError
 import requests
-from sqlmodel import Session
 
+logger = logging.getLogger(__name__)
+
+
+#parses
 T = TypeVar("T") 
 def parse_json_response(response: requests.Response, expected_type: Type[T]) -> T:
     """
@@ -65,8 +69,6 @@ def safe_post_and_parse(url: str, payload: dict, model: Type[T], logger:Logger) 
         )
         raise
 
-
-logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 def safe_request_and_parse(
@@ -153,5 +155,23 @@ def safe_request_and_parse(
         )
         raise
     
-    
-    
+#validators
+async def read_and_validate_file(
+    file: UploadFile, chunk_size: int, max_size: int
+) -> BytesIO:
+    stream = BytesIO()
+    size = 0
+
+    while chunk := await file.read(chunk_size):
+        size += len(chunk)
+        if size > max_size:
+            raise ValueError(
+                f"File is too large. Maximum size is {max_size // 1024 // 1024}MB."
+            )
+        stream.write(chunk)
+
+    if not stream.getbuffer().nbytes:
+        raise ValueError(f"Empty file uploaded")
+
+    stream.seek(0)
+    return stream
