@@ -1,7 +1,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, HTTPException, Path, Query, status
 from sqlmodel import select
 
 from api.deps import SessionDep, CurrentUser
@@ -27,21 +27,25 @@ async def create_product(
     return product
 
 
-@router.get("/")
+@router.get("/", response_model=List[Product])
 async def list_products(
     session: SessionDep,
-    offset: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(10, ge=1, le=100, description="Max number of items to return"),
 ):
     """
     Retrieve a list of products with pagination.
     """
     results = session.exec(select(Product).offset(offset).limit(limit)).all()
 
-    return list(results)
+    return results
 
 
-@router.get("/{product_id}")
+@router.get(
+    "/{product_id}",
+    response_model=Product,
+    responses={404: {"description": "Product not found"}},
+)
 async def get_product(
     session: SessionDep,
     product_id: UUID = Path(..., description="ID of the product to retrieve"),
@@ -57,7 +61,11 @@ async def get_product(
     return product
 
 
-@router.put("/{product_id}")
+@router.put(
+    "/{product_id}",
+    response_model=Product,
+    responses={404: {"description": "Product not found"}},
+)
 async def update_product(
     product_id: UUID,
     product_in: ProductUpdate,
@@ -74,7 +82,7 @@ async def update_product(
     product_data = product_in.model_dump(exclude_unset=True)
     for key, value in product_data.items():
         setattr(product, key, value)
-        
+
     session.add(product)
     session.commit()
     session.refresh(product)
@@ -82,7 +90,11 @@ async def update_product(
     return product
 
 
-@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{product_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "Product not found"}},
+)
 async def delete_product(
     product_id: UUID,
     session: SessionDep,
@@ -99,8 +111,19 @@ async def delete_product(
     session.commit()
     return None
 
-@router.get("/images/all")
-async def get_all_products_images(session: SessionDep):
-    statement = select(ProductImage)
-    result = session.exec(statement).all()
-    return list(result)
+
+@router.get(
+    "/images/all",
+    response_model=List[ProductImage],
+)
+async def list_products_images(
+    session: SessionDep,
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(10, ge=1, le=100, description="Max number of items to return"),
+):
+    """
+    Retrieve a list of product images with pagination.
+    """
+    results = session.exec(select(ProductImage).offset(offset).limit(limit)).all()
+
+    return results
