@@ -33,6 +33,34 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 logger = logging.getLogger(__name__)
 
 
+def procces_image(
+    img_stream: BytesIO, session: Session, img_type: str, bucket_name: str
+) -> ImageFile:
+    chunk_size = 1024 * 1024
+
+
+    pil_img = create_and_verify_pil_img(img_stream)
+
+    new_img_id = uuid.uuid4()
+
+    img_filename = build_image_filename(img=pil_img, id=new_img_id, prefix=img_type)
+
+    s3_path = storage.upload_file_to_s3(
+        file_obj=img_stream,
+        bucket_name=bucket_name,
+        object_name=img_filename,
+    )
+    return ImageFile(
+        id=new_img_id,
+        filename=img_filename,
+        width=pil_img.width,
+        height=pil_img.height,
+        format=pil_img.format,
+        path=s3_path,
+    )
+
+
+
 # celery tasks
 # needs retry logic
 # needs to use 2 buckets names, one for product images, one for query images
@@ -40,7 +68,7 @@ logger = logging.getLogger(__name__)
 # we may see conflicts bugs in the future because of filename generator, with only cloth_[N].png we may create varius images filenames with the same name/value
 # job is not being proper saved its state
 @celery_app.task(name="task.cloth_detection_task", bind=True)
-def cloth_detection_task(self, img_id: UUID) -> list[UUID]:
+def cloth_detection_task(self, img_id: UUID, bucket_name:str) -> list[UUID]:
     logger.info(f"Starting cloth detection task for img_id={img_id}")
     with Session(engine) as session:
         try:
@@ -59,7 +87,7 @@ def cloth_detection_task(self, img_id: UUID) -> list[UUID]:
                 logger.info("Calling ML service for cloth detection")
                 ml_service_res = send_s3_img_to_service(
                     img_filename=img_metadata.filename,
-                    bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
+                    bucket_name=bucket_name,
                     service_url=f"{settings.ML_SERVICE_URL}/inference/image/crop_clothes",
                 )
                 cloth_imgs_encoded: List[str] = parse_json_response(
@@ -73,26 +101,7 @@ def cloth_detection_task(self, img_id: UUID) -> list[UUID]:
                 )
                 for idx, img_encoded in enumerate(cloth_imgs_encoded):
                     cloth_img_file = BytesIO(base64.b64decode(img_encoded))
-                    cloth_img = create_and_verify_pil_img(
-                        img_bytes=cloth_img_file, logger=logger
-                    )
-                    img_filename = build_image_filename(
-                        img=cloth_img, idx=idx, prefix="cloth"
-                    )
-                    s3_path = storage.upload_file_to_s3(
-                        file_obj=cloth_img_file,
-                        bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
-                        object_name=img_filename,
-                    )
-
-                    cloth_crop_metadata = ImageFile(
-                        path=s3_path,
-                        filename=img_filename,
-                        width=cloth_img.width,
-                        height=cloth_img.height,
-                        format=cloth_img.format,
-                        original_id=img_metadata.id,  # link back to original
-                    )
+                    cloth_crop_metadata = procces_image(img_stream=cloth_img_file,session=session, img_type="png", bucket_name=bucket_name)
                     # Append to parent image's crops relationship
                     # this is not idepotent, as another run for the same image id will append the new crops with the old crops
                     img_metadata.crops.append(cloth_crop_metadata)
@@ -138,7 +147,7 @@ class LabelImgResult(BaseModel):
 
 
 @celery_app.task(name="task.label_img_task", bind=True)
-def label_img_task(self, img_id: UUID) -> dict:
+def label_img_task(self, img_id: UUID, bucket_name: str) -> dict:
     logger.info(f"Starting labeling task for img_id={img_id}")
     with Session(engine) as session:
         try:
@@ -150,7 +159,7 @@ def label_img_task(self, img_id: UUID) -> dict:
                 logger.info("Calling ML service for image labeling")
                 res = send_s3_img_to_service(
                     img_filename=img_metadata.filename,
-                    bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
+                    bucket_name=bucket_name,
                     service_url=f"{settings.ML_SERVICE_URL}/inference/image/label",
                 )
 
@@ -412,8 +421,8 @@ def update_job_status_task(
 
 
 @celery_app.task(name="task.start_indexing_chord", bind=True)
-def start_indexing_chord(self, crop_ids, product_id, job_id):
-    header = [label_img_task.s(c) for c in crop_ids]
+def start_indexing_chord(self, crop_ids:List[UUID], product_id: UUID, job_id: UUID):
+    header = [label_img_task.s(c, settings.S3_PRODUCT_BUCKET_NAME) for c in crop_ids]
     body = chain(
         select_img_for_product_task.s(product_id),
         save_image_in_vector_db_task.s(settings.CHROMA_PRODUCT_IMAGE_COLLECTION),
@@ -453,7 +462,7 @@ def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
                 )
 
                 workflow = chain(
-                    cloth_detection_task.s(img_id),
+                    cloth_detection_task.s(img_id, settings.S3_PRODUCT_BUCKET_NAME),
                     start_indexing_chord.s(product_id, job_id),
                 )
                 workflow.apply_async(
@@ -479,7 +488,7 @@ def start_querying_pipeline_task(
 
     per_crop_chains = [
         chain(
-            label_img_task.s(crop_id),
+            label_img_task.s(crop_id, settings.S3_QUERY_BUCKET_NAME),
             query_image_in_vector_db_task.s(
                 query_result_id=query_result_id, collection_name=collection_name
             ),
@@ -514,7 +523,7 @@ def querying_orchestrator_task(self, job_id: UUID) -> UUID:
                 )
 
                 workflow = chain(
-                    cloth_detection_task.s(img_id),
+                    cloth_detection_task.s(img_id, settings.S3_QUERY_BUCKET_NAME),
                     start_querying_pipeline_task.s(
                         job_id=job_id,
                         query_result_id=new_query.id,

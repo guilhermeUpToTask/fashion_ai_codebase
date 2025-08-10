@@ -148,6 +148,7 @@ services:
             - S3_ACCESS_KEY=${S3_ACCESS_KEY}
             - S3_SECRET_KEY=${S3_SECRET_KEY}
             - S3_PRODUCT_BUCKET_NAME=${S3_PRODUCT_BUCKET_NAME}
+            - S3_QUERY_BUCKET_NAME=${S3_QUERY_BUCKET_NAME}
             - ML_SERVICE_URL=http://ml_service:8080 # Internal communication
             # --- Other Secrets ---
             - ADMIN_USER=${ADMIN_USER}
@@ -193,6 +194,7 @@ services:
             - S3_ACCESS_KEY=${S3_ACCESS_KEY}
             - S3_SECRET_KEY=${S3_SECRET_KEY}
             - S3_PRODUCT_BUCKET_NAME=${S3_PRODUCT_BUCKET_NAME}
+            - S3_QUERY_BUCKET_NAME=${S3_QUERY_BUCKET_NAME}
             - ML_SERVICE_URL=http://ml_service:8080 # Internal communication
             # --- Other Secrets ---
             - ADMIN_USER=${ADMIN_USER}

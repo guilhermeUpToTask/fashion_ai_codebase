@@ -6,18 +6,18 @@ from typing import Annotated, List, Optional
 import uuid
 from PIL import Image
 from sqlmodel import select
-from backend.app.api.deps import SessionDep
-from backend.app.core import storage
-from backend.app.core.config import settings
-from backend.app.models.image import ImageFile
-from backend.app.models.job import Job, JobStatus, JobResponse, JobType
-from backend.app.models.product import Product, ProductImage
-from backend.app.models.result import IndexingResult, QueryResult
-from backend.app.utils.image_helpers import (
+from api.deps import SessionDep
+from core.config import settings
+from core import storage
+from models.image import ImageFile
+from models.job import Job, JobStatus, JobResponse, JobType
+from models.product import Product, ProductImage
+from models.result import IndexingResult, QueryResult
+from utils.image_helpers import (
     build_image_filename,
     create_and_verify_pil_img,
 )
-from backend.app.worker.tasks import indexing_orchestrator_task, querying_orchestrator_task
+from worker.tasks import indexing_orchestrator_task, querying_orchestrator_task
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -51,7 +51,7 @@ async def read_and_validate_file(
     stream.seek(0)
     return stream
 
-
+#this should be a helper aswell, we will reutilize in the orchestrator pipeline
 async def procces_image(
     img_file: UploadFile, session: SessionDep, img_type: str, bucket_name: str
 ) -> ImageFile:
@@ -332,9 +332,11 @@ async def list_jobs(
     job_type: Optional[JobType] = None,
     limit: int = 50,
     offset: int = 0,
-) -> List[JobResponse]:
+) -> List[Job]:
     """List jobs with optional filtering"""
-    return []
+    results = session.exec(select(Job).limit(limit).offset(offset)).all()
+
+    return list(results)
 
 
 @router.delete("/{job_id}")

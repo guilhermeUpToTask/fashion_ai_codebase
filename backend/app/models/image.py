@@ -12,7 +12,7 @@ from models.label import StructuredLabel
 
 
 
-
+#later will need a bucket column aswell to define in iwch bucket the image file resides
 class ImageFile(SQLModel, table=True):
     __tablename__= "images" #type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
