@@ -1,21 +1,37 @@
 from datetime import datetime, timezone
+from enum import Enum
 import uuid
 from sqlmodel import (
     JSON,
+    CheckConstraint,
     Relationship,
     SQLModel,
     Field,
     Column,
+    String,
 )
 from typing import Any, Dict, List, Optional
+from backend.app.core.config import settings
 from models.label import StructuredLabel
 
+class BucketName(str, Enum):
+    PRODUCT = settings.S3_PRODUCT_BUCKET_NAME
+    QUERY = settings.S3_QUERY_BUCKET_NAME
 
-
-#later will need a bucket column aswell to define in iwch bucket the image file resides
 class ImageFile(SQLModel, table=True):
     __tablename__= "images" #type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    bucket: BucketName = Field(
+        sa_column=Column(
+            String(20),
+            CheckConstraint(
+                # Update this constraint with new values
+                f"bucket IN ({', '.join(repr(t.value) for t in BucketName)})",
+                name="check_type_enum",
+            ),
+            nullable=False,
+        ),
+    )
     path: str
     filename: str
     width: int | None
@@ -48,7 +64,6 @@ class ImagePublic(SQLModel):
     id: uuid.UUID
     label: str | None
     path: str
-    # later we need to pass the image itself as streaming response.
 
 
 class ImageUpdate(SQLModel):

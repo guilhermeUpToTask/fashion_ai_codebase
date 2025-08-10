@@ -15,7 +15,7 @@ from models.result import (
 )
 from celery_app import app as celery_app
 from core import storage
-from models.image import ImageFile
+from models.image import BucketName, ImageFile
 from models.label import LabelingResponse, StructuredLabel
 from core.vector_db.chroma_db import chroma_client_wrapper
 from core.db import engine
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def procces_image(
-    img_stream: BytesIO, session: Session, img_type: str, bucket_name: str
+    img_stream: BytesIO, session: Session, img_type: str, bucket_name: BucketName
 ) -> ImageFile:
     chunk_size = 1024 * 1024
 
@@ -47,11 +47,12 @@ def procces_image(
 
     s3_path = storage.upload_file_to_s3(
         file_obj=img_stream,
-        bucket_name=bucket_name,
+        bucket_name=bucket_name.value,
         object_name=img_filename,
     )
     return ImageFile(
         id=new_img_id,
+        bucket=bucket_name,
         filename=img_filename,
         width=pil_img.width,
         height=pil_img.height,
@@ -70,6 +71,12 @@ def procces_image(
 @celery_app.task(name="task.cloth_detection_task", bind=True)
 def cloth_detection_task(self, img_id: UUID, bucket_name:str) -> list[UUID]:
     logger.info(f"Starting cloth detection task for img_id={img_id}")
+    try:
+        bucket = BucketName(bucket_name)   # matches by enum value
+    except ValueError as e:
+        raise ValueError(f"invalid bucket {bucket_name}") from e
+    
+    
     with Session(engine) as session:
         try:
             with session.begin():
@@ -87,7 +94,7 @@ def cloth_detection_task(self, img_id: UUID, bucket_name:str) -> list[UUID]:
                 logger.info("Calling ML service for cloth detection")
                 ml_service_res = send_s3_img_to_service(
                     img_filename=img_metadata.filename,
-                    bucket_name=bucket_name,
+                    bucket_name=bucket.value,
                     service_url=f"{settings.ML_SERVICE_URL}/inference/image/crop_clothes",
                 )
                 cloth_imgs_encoded: List[str] = parse_json_response(
@@ -101,7 +108,7 @@ def cloth_detection_task(self, img_id: UUID, bucket_name:str) -> list[UUID]:
                 )
                 for idx, img_encoded in enumerate(cloth_imgs_encoded):
                     cloth_img_file = BytesIO(base64.b64decode(img_encoded))
-                    cloth_crop_metadata = procces_image(img_stream=cloth_img_file,session=session, img_type="png", bucket_name=bucket_name)
+                    cloth_crop_metadata = procces_image(img_stream=cloth_img_file,session=session, img_type="png", bucket_name=bucket)
                     # Append to parent image's crops relationship
                     # this is not idepotent, as another run for the same image id will append the new crops with the old crops
                     img_metadata.crops.append(cloth_crop_metadata)
@@ -149,6 +156,12 @@ class LabelImgResult(BaseModel):
 @celery_app.task(name="task.label_img_task", bind=True)
 def label_img_task(self, img_id: UUID, bucket_name: str) -> dict:
     logger.info(f"Starting labeling task for img_id={img_id}")
+    try:
+        bucket = BucketName(bucket_name)   # matches by enum value
+    except ValueError as e:
+        raise ValueError(f"invalid bucket {bucket_name}") from e
+    
+    
     with Session(engine) as session:
         try:
             with session.begin():
@@ -159,7 +172,7 @@ def label_img_task(self, img_id: UUID, bucket_name: str) -> dict:
                 logger.info("Calling ML service for image labeling")
                 res = send_s3_img_to_service(
                     img_filename=img_metadata.filename,
-                    bucket_name=bucket_name,
+                    bucket_name=bucket.value,
                     service_url=f"{settings.ML_SERVICE_URL}/inference/image/label",
                 )
 

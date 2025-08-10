@@ -9,7 +9,7 @@ from sqlmodel import select
 from api.deps import SessionDep
 from core.config import settings
 from core import storage
-from models.image import ImageFile
+from models.image import BucketName, ImageFile
 from models.job import Job, JobStatus, JobResponse, JobType
 from models.product import Product, ProductImage
 from models.result import IndexingResult, QueryResult
@@ -30,7 +30,7 @@ ALLOWED_TYPES = {"image/jpeg", "image/png"}
 
 # Helpers
 async def procces_image(
-    img_file: UploadFile, session: SessionDep, img_type: str, bucket_name: str
+    img_file: UploadFile, session: SessionDep, img_type: str, bucket_name: BucketName
 ) -> ImageFile:
     chunk_size = 1024 * 1024
     img_stream = await read_and_validate_file(
@@ -45,12 +45,13 @@ async def procces_image(
 
     s3_path = storage.upload_file_to_s3(
         file_obj=img_stream,
-        bucket_name=bucket_name,
+        bucket_name=bucket_name.value,
         object_name=img_filename,
     )
     return ImageFile(
         id=new_img_id,
         filename=img_filename,
+        bucket=bucket_name,
         width=pil_img.width,
         height=pil_img.height,
         format=pil_img.format,
@@ -172,7 +173,7 @@ async def create_indexing_job(
                 img_file=image_file,
                 session=session,
                 img_type="product",
-                bucket_name=settings.S3_PRODUCT_BUCKET_NAME,
+                bucket_name=BucketName.PRODUCT,
             )
             session.add(img_metadata)
             session.flush()
@@ -252,7 +253,7 @@ async def create_querying_job(
                 img_file=image_file,
                 session=session,
                 img_type="query",
-                bucket_name=settings.S3_QUERY_BUCKET_NAME,
+                bucket_name=BucketName.QUERY,
             )
             session.add(img_metadata)
             session.flush()
