@@ -30,7 +30,7 @@ def upload_file_to_s3(file_obj: BytesIO, bucket_name: str, object_name: str):
 
 
 
-def download_file_from_s3(bucket: str, key: str) -> BytesIO:
+def download_file_from_s3(bucket_name: str, key: str) -> BytesIO:
     """
     Downloads an object from S3 given its bucket and key, and returns
     a BytesIO stream containing the object's bytes.
@@ -45,9 +45,9 @@ def download_file_from_s3(bucket: str, key: str) -> BytesIO:
         # positional args: Bucket, Key, Fileobj
         s3_client = get_s3_client()
         file_obj = BytesIO()
-        s3_client.download_fileobj(bucket, key, file_obj)
+        s3_client.download_fileobj(bucket_name, key, file_obj)
     except (BotoCoreError, ClientError) as e:
-        raise RuntimeError(f"Failed to download s3://{bucket}/{key}: {e}") from e
+        raise RuntimeError(f"Failed to download s3://{bucket_name}/{key}: {e}") from e
 
     file_obj.seek(0)  # rewind to the start
     return file_obj

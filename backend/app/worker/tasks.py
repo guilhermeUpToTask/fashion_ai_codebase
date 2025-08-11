@@ -15,7 +15,7 @@ from models.result import (
 )
 from celery_app import app as celery_app
 from core import storage
-from models.image import BucketName, ImageFile
+from models.image import BucketName, ImageFile,BUCKET_NAME_TO_S3
 from models.label import LabelingResponse, StructuredLabel
 from core.vector_db.chroma_db import chroma_client_wrapper
 from core.db import engine
@@ -36,18 +36,15 @@ logger = logging.getLogger(__name__)
 def procces_image(
     img_stream: BytesIO, session: Session, img_type: str, bucket_name: BucketName
 ) -> ImageFile:
-    chunk_size = 1024 * 1024
-
 
     pil_img = create_and_verify_pil_img(img_stream)
-
     new_img_id = uuid.uuid4()
-
     img_filename = build_image_filename(img=pil_img, id=new_img_id, prefix=img_type)
-
+    
+    real_bucket = BUCKET_NAME_TO_S3[bucket_name]
     s3_path = storage.upload_file_to_s3(
         file_obj=img_stream,
-        bucket_name=bucket_name.value,
+        bucket_name=real_bucket,
         object_name=img_filename,
     )
     return ImageFile(
@@ -94,7 +91,7 @@ def cloth_detection_task(self, img_id: UUID, bucket_name:str) -> list[UUID]:
                 logger.info("Calling ML service for cloth detection")
                 ml_service_res = send_s3_img_to_service(
                     img_filename=img_metadata.filename,
-                    bucket_name=bucket.value,
+                    bucket_name=bucket,
                     service_url=f"{settings.ML_SERVICE_URL}/inference/image/crop_clothes",
                 )
                 cloth_imgs_encoded: List[str] = parse_json_response(
@@ -172,7 +169,7 @@ def label_img_task(self, img_id: UUID, bucket_name: str) -> dict:
                 logger.info("Calling ML service for image labeling")
                 res = send_s3_img_to_service(
                     img_filename=img_metadata.filename,
-                    bucket_name=bucket.value,
+                    bucket_name=bucket,
                     service_url=f"{settings.ML_SERVICE_URL}/inference/image/label",
                 )
 
@@ -435,7 +432,7 @@ def update_job_status_task(
 
 @celery_app.task(name="task.start_indexing_chord", bind=True)
 def start_indexing_chord(self, crop_ids:List[UUID], product_id: UUID, job_id: UUID):
-    header = [label_img_task.s(c, settings.S3_PRODUCT_BUCKET_NAME) for c in crop_ids]
+    header = [label_img_task.s(c, BucketName.PRODUCT) for c in crop_ids]
     body = chain(
         select_img_for_product_task.s(product_id),
         save_image_in_vector_db_task.s(settings.CHROMA_PRODUCT_IMAGE_COLLECTION),
@@ -475,7 +472,7 @@ def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
                 )
 
                 workflow = chain(
-                    cloth_detection_task.s(img_id, settings.S3_PRODUCT_BUCKET_NAME),
+                    cloth_detection_task.s(img_id, BucketName.PRODUCT),
                     start_indexing_chord.s(product_id, job_id),
                 )
                 workflow.apply_async(
@@ -501,7 +498,7 @@ def start_querying_pipeline_task(
 
     per_crop_chains = [
         chain(
-            label_img_task.s(crop_id, settings.S3_QUERY_BUCKET_NAME),
+            label_img_task.s(crop_id, BucketName.QUERY),
             query_image_in_vector_db_task.s(
                 query_result_id=query_result_id, collection_name=collection_name
             ),
@@ -536,7 +533,7 @@ def querying_orchestrator_task(self, job_id: UUID) -> UUID:
                 )
 
                 workflow = chain(
-                    cloth_detection_task.s(img_id, settings.S3_QUERY_BUCKET_NAME),
+                    cloth_detection_task.s(img_id, BucketName.QUERY),
                     start_querying_pipeline_task.s(
                         job_id=job_id,
                         query_result_id=new_query.id,

@@ -1,7 +1,16 @@
 # routes/jobs.py - Dedicated job management
 from io import BytesIO
 import logging
-from fastapi import APIRouter, HTTPException, Header, Path, Query, UploadFile, File, status
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Header,
+    Path,
+    Query,
+    UploadFile,
+    File,
+    status,
+)
 from typing import Annotated, List, Optional
 import uuid
 from PIL import Image
@@ -9,7 +18,7 @@ from sqlmodel import select
 from api.deps import SessionDep
 from core.config import settings
 from core import storage
-from models.image import BucketName, ImageFile
+from models.image import BucketName, ImageFile, BUCKET_NAME_TO_S3
 from models.job import Job, JobStatus, JobResponse, JobType
 from models.product import Product, ProductImage
 from models.result import IndexingResult, QueryResult
@@ -33,21 +42,22 @@ async def procces_image(
     img_file: UploadFile, session: SessionDep, img_type: str, bucket_name: BucketName
 ) -> ImageFile:
     chunk_size = 1024 * 1024
+
     img_stream = await read_and_validate_file(
         file=img_file, chunk_size=chunk_size, max_size=settings.MAX_IMAGE_SIZE_BYTES
     )
-
     pil_img = create_and_verify_pil_img(img_stream)
 
     new_img_id = uuid.uuid4()
 
     img_filename = build_image_filename(img=pil_img, id=new_img_id, prefix=img_type)
-
+    real_bucket = BUCKET_NAME_TO_S3[bucket_name]
     s3_path = storage.upload_file_to_s3(
         file_obj=img_stream,
-        bucket_name=bucket_name.value,
+        bucket_name=real_bucket,
         object_name=img_filename,
     )
+
     return ImageFile(
         id=new_img_id,
         filename=img_filename,
@@ -325,9 +335,13 @@ async def get_job_status(
 
     if job.status == JobStatus.COMPLETED:
         if job.type == JobType.QUERYING:
-            response.result = await generate_query_result(session=session, job_id=job_id)
+            response.result = await generate_query_result(
+                session=session, job_id=job_id
+            )
         elif job.type == JobType.INDEXING:
-            response.result = await generate_indexing_result(session=session, job_id=job_id)
+            response.result = await generate_indexing_result(
+                session=session, job_id=job_id
+            )
 
     return response
 
