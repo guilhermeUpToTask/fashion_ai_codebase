@@ -1,17 +1,30 @@
+from decimal import Decimal
 from uuid import UUID, uuid4
 from typing import List, Optional
 from pydantic import ConfigDict
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import Column, Numeric, SQLModel, Field, Relationship
 
 
 class ProductBase(SQLModel):
-    sku: str | None = Field(
-        default=None, description="Unique SKU code, e.g., LEV501-BL-3232"
-    )
-    name: str = Field(..., description="Product name, e.g., Levi's 501 Jeans")
-    description: str | None = Field(
+    # A SKU is a unique alphanumeric code assigned to a specific product to identify and track it for inventory purposes.
+    # example: A "Levi's 501 Jeans, Blue, Size 32x32" might have a SKU of LEV501-BL-3232.
+    sku: Optional[str] = Field(
         default=None,
-        description="Product description, e.g., Blue denim jeans, size 32x32",
+        description="Unique SKU code, e.g., LEV501-BL-3232",
+        index=True,
+        unique=True
+    )
+    name: str = Field(
+        ...,
+        description="Product name, e.g., Levi's 501 Jeans",
+        index=True
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Product description, e.g., Blue denim jeans, size 32x32"
+    )
+    price: Decimal = Field(
+        sa_column=Column(Numeric(10, 2))
     )
 
 
@@ -32,16 +45,15 @@ class ProductUpdate(SQLModel):
         default=None,
         description="Product description, e.g., Blue denim jeans, size 32x32",
     )
+    price: Decimal | None = Field(
+        default=None,
+        description="Product price, e.g., 99.99",
+    )
 
 
 class Product(ProductBase, table=True):
     __tablename__ = "products"  # type: ignore
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    # A SKU is a unique alphanumeric code assigned to a specific product to identify and track it for inventory purposes.
-    # example: A "Levi's 501 Jeans, Blue, Size 32x32" might have a SKU of LEV501-BL-3232.
-    sku: str | None = Field(default=None, unique=True, index=True)
-    name: str = Field(index=True)
-
     # adapted relationshipt
     product_images: List["ProductImage"] = Relationship(back_populates="product")
 
