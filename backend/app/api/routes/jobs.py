@@ -201,6 +201,7 @@ async def create_indexing_job(
                 type=JobType.INDEXING,
                 status=JobStatus.QUEUED,
                 input_img_id=img_metadata.id,
+                input_product_id=product.id,
                 processing_details="Job queued for processing",
             )
             session.add(job)
