@@ -113,7 +113,7 @@ async def delete_product(
 
 
 @router.get(
-    "/images/all",
+    "/images/",
     response_model=List[ProductImage],
 )
 async def list_products_images(
