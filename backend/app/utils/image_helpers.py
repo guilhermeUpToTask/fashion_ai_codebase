@@ -77,7 +77,7 @@ def send_s3_img_to_service(
     img_filename: str, bucket_name: str, service_url: str, timeout: int = 30,
 ) -> requests.Response:
     """Downloads an image from S3 and send its to an service."""
-    img_file = storage.download_file_from_s3(bucket=bucket_name, key=img_filename)
+    img_file = storage.download_file_from_s3(bucket_name, img_filename)
     mime_type, _ = mimetypes.guess_type(img_filename)
     files = {
         "img_file": (img_filename, img_file, mime_type or "application/octet-stream")

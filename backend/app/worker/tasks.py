@@ -89,9 +89,10 @@ def cloth_detection_task(self, img_id: UUID, bucket_name:str) -> list[UUID]:
                     return [crop.id for crop in img_metadata.crops]
 
                 logger.info("Calling ML service for cloth detection")
+                real_bucket = BUCKET_NAME_TO_S3[bucket]
                 ml_service_res = send_s3_img_to_service(
                     img_filename=img_metadata.filename,
-                    bucket_name=bucket,
+                    bucket_name=real_bucket,
                     service_url=f"{settings.ML_SERVICE_URL}/inference/image/crop_clothes",
                 )
                 cloth_imgs_encoded: List[str] = parse_json_response(
@@ -167,9 +168,10 @@ def label_img_task(self, img_id: UUID, bucket_name: str) -> dict:
                     raise ValueError(f"No image metadata found for id={img_id}")
 
                 logger.info("Calling ML service for image labeling")
+                real_bucket = BUCKET_NAME_TO_S3[bucket]
                 res = send_s3_img_to_service(
                     img_filename=img_metadata.filename,
-                    bucket_name=bucket,
+                    bucket_name=real_bucket,
                     service_url=f"{settings.ML_SERVICE_URL}/inference/image/label",
                 )
 
@@ -206,7 +208,7 @@ class BestMatchingResponse(BaseModel):
     text: str  # the label with the highest match
     score: float  # similarity score (0.0 - 1.0)
 
-
+#needs to rollback and delete all the data from the images of best match res score is below the necessary
 @celery_app.task(name="task.select_img_for_product_task", bind=True)
 def select_img_for_product_task(
     self, img_labels_data: List[dict], product_id: UUID
@@ -477,7 +479,7 @@ def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
                 )
                 workflow.apply_async(
                     # this link error does not works for some nested expections, needs to fix, example(ValueError: No substantial product match found in image labels)
-                    link_error=update_job_status_task.s(
+                    link_error=update_job_status_task.si(
                         job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
                     )
                 )
@@ -546,7 +548,7 @@ def querying_orchestrator_task(self, job_id: UUID) -> UUID:
                     ),
                 )
                 workflow.apply_async(
-                    link_error=update_job_status_task.s(
+                    link_error=update_job_status_task.si(#fix: changed for si, to not blow up when a error happens
                         job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
                     )
                 )
