@@ -11,7 +11,7 @@ from sqlmodel import (
     String,
 )
 from typing import Any, Dict, Final, List, Optional
-from backend.app.core.config import settings
+from core.config import settings
 from models.label import StructuredLabel
 
 
