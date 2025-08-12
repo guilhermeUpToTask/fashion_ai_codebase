@@ -173,12 +173,15 @@ async def create_indexing_job(
             status_code=413,
             detail=f"File too large. Maximum size is {settings.MAX_IMAGE_SIZE_BYTES // 1024 // 1024}MB.",
         )
-    product = session.get(Product, product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="No product found for given id")
 
     try:
         with session.begin():
+            product = session.get(Product, product_id)
+            if not product:
+                raise HTTPException(
+                    status_code=404, detail="No product found for given id"
+                )
+
             img_metadata = await procces_image(
                 img_file=image_file,
                 session=session,
