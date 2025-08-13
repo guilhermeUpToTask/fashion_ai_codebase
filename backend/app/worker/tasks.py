@@ -15,7 +15,7 @@ from models.result import (
 )
 from celery_app import app as celery_app
 from core import storage
-from models.image import BucketName, ImageFile,BUCKET_NAME_TO_S3
+from models.image import BucketName, ImageFile, BUCKET_NAME_TO_S3
 from models.label import LabelingResponse, StructuredLabel
 from core.vector_db.chroma_db import chroma_client_wrapper
 from core.db import engine
@@ -40,7 +40,7 @@ def procces_image(
     pil_img = create_and_verify_pil_img(img_stream)
     new_img_id = uuid.uuid4()
     img_filename = build_image_filename(img=pil_img, id=new_img_id, prefix=img_type)
-    
+
     real_bucket = BUCKET_NAME_TO_S3[bucket_name]
     s3_path = storage.upload_file_to_s3(
         file_obj=img_stream,
@@ -58,7 +58,6 @@ def procces_image(
     )
 
 
-
 # celery tasks
 # needs retry logic
 # needs to use 2 buckets names, one for product images, one for query images
@@ -66,14 +65,13 @@ def procces_image(
 # we may see conflicts bugs in the future because of filename generator, with only cloth_[N].png we may create varius images filenames with the same name/value
 # job is not being proper saved its state
 @celery_app.task(name="task.cloth_detection_task", bind=True)
-def cloth_detection_task(self, img_id: UUID, bucket_name:str) -> list[UUID]:
+def cloth_detection_task(self, img_id: UUID, bucket_name: str) -> list[UUID]:
     logger.info(f"Starting cloth detection task for img_id={img_id}")
     try:
-        bucket = BucketName(bucket_name)   # matches by enum value
+        bucket = BucketName(bucket_name)  # matches by enum value
     except ValueError as e:
         raise ValueError(f"invalid bucket {bucket_name}") from e
-    
-    
+
     with Session(engine) as session:
         try:
             with session.begin():
@@ -106,7 +104,12 @@ def cloth_detection_task(self, img_id: UUID, bucket_name:str) -> list[UUID]:
                 )
                 for idx, img_encoded in enumerate(cloth_imgs_encoded):
                     cloth_img_file = BytesIO(base64.b64decode(img_encoded))
-                    cloth_crop_metadata = procces_image(img_stream=cloth_img_file,session=session, img_type="png", bucket_name=bucket)
+                    cloth_crop_metadata = procces_image(
+                        img_stream=cloth_img_file,
+                        session=session,
+                        img_type="png",
+                        bucket_name=bucket,
+                    )
                     # Append to parent image's crops relationship
                     # this is not idepotent, as another run for the same image id will append the new crops with the old crops
                     img_metadata.crops.append(cloth_crop_metadata)
@@ -155,11 +158,10 @@ class LabelImgResult(BaseModel):
 def label_img_task(self, img_id: UUID, bucket_name: str) -> dict:
     logger.info(f"Starting labeling task for img_id={img_id}")
     try:
-        bucket = BucketName(bucket_name)   # matches by enum value
+        bucket = BucketName(bucket_name)  # matches by enum value
     except ValueError as e:
         raise ValueError(f"invalid bucket {bucket_name}") from e
-    
-    
+
     with Session(engine) as session:
         try:
             with session.begin():
@@ -208,7 +210,8 @@ class BestMatchingResponse(BaseModel):
     text: str  # the label with the highest match
     score: float  # similarity score (0.0 - 1.0)
 
-#needs to rollback and delete all the data from the images of best match res score is below the necessary
+
+# needs to rollback and delete all the data from the images of best match res score is below the necessary
 @celery_app.task(name="task.select_img_for_product_task", bind=True)
 def select_img_for_product_task(
     self, img_labels_data: List[dict], product_id: UUID
@@ -410,6 +413,7 @@ def finalize_indexing_task(
                     model_version=model_version,
                 )
                 session.add(idx_result)
+
                 return idx_result.id
 
         except Exception as e:
@@ -420,7 +424,6 @@ def finalize_indexing_task(
 def update_job_status_task(
     self, job_id: UUID, status: JobStatus, message: str | None = None
 ):
-    # *only* this task knows about the Job model
     with Session(engine) as session:
         job = session.get(Job, job_id)
         if not job:
@@ -433,8 +436,15 @@ def update_job_status_task(
 
 
 @celery_app.task(name="task.start_indexing_chord", bind=True)
-def start_indexing_chord(self, crop_ids:List[UUID], product_id: UUID, job_id: UUID):
-    header = [label_img_task.s(c, BucketName.PRODUCT) for c in crop_ids]
+def start_indexing_chord(self, crop_ids: List[UUID], product_id: UUID, job_id: UUID):
+    header = [
+        label_img_task.s(c, BucketName.PRODUCT).set(
+            link_error=update_job_status_task.s(
+                job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
+            )
+        )
+        for c in crop_ids
+    ]
     body = chain(
         select_img_for_product_task.s(product_id),
         save_image_in_vector_db_task.s(settings.CHROMA_PRODUCT_IMAGE_COLLECTION),
@@ -442,6 +452,13 @@ def start_indexing_chord(self, crop_ids:List[UUID], product_id: UUID, job_id: UU
             created_crops=crop_ids,
             job_id=job_id,
             model_version=settings.MODEL_VERSION,
+        ),
+        update_job_status_task.si(
+            job_id, JobStatus.COMPLETED, "Indexing Completed"
+        ).set(
+            link_error=update_job_status_task.s(
+                job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
+            )
         ),
     )
     return chord(header)(body)
@@ -478,7 +495,6 @@ def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
                     start_indexing_chord.s(product_id, job_id),
                 )
                 workflow.apply_async(
-                    # this link error does not works for some nested expections, needs to fix, example(ValueError: No substantial product match found in image labels)
                     link_error=update_job_status_task.si(
                         job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
                     )
@@ -488,7 +504,7 @@ def indexing_orchestrator_task(self, job_id: UUID) -> UUID:
         except Exception as e:
             raise
 
-# For consistency, also update the indexing orchestrator to follow the same pattern
+
 @celery_app.task(name="task.start_querying_pipeline_task", bind=True)
 def start_querying_pipeline_task(
     self,
@@ -497,18 +513,23 @@ def start_querying_pipeline_task(
     query_result_id: UUID,
     collection_name: str,
 ):
-
-    per_crop_chains = [
+    header = [
         chain(
-            label_img_task.s(crop_id, BucketName.QUERY),
+            label_img_task.s(c, BucketName.QUERY),
             query_image_in_vector_db_task.s(
                 query_result_id=query_result_id, collection_name=collection_name
             ),
+        ).set(
+            link_error=update_job_status_task.s(
+                job_id, JobStatus.FAILED, "Job Failed in querying pipeline"
+            )
         )
-        for crop_id in crop_ids
+        for c in crop_ids
     ]
+    body = update_job_status_task.si(job_id, JobStatus.COMPLETED, "Query Completed")
 
-    return group(*per_crop_chains).apply_async()
+    return chord(header)(body)
+
 
 # For consistency, also update the indexing orchestrator to follow the same pattern
 @celery_app.task(name="task.querying_orchestrator_task", bind=True)
@@ -541,14 +562,9 @@ def querying_orchestrator_task(self, job_id: UUID) -> UUID:
                         query_result_id=new_query.id,
                         collection_name=settings.CHROMA_PRODUCT_IMAGE_COLLECTION,
                     ),
-                    update_job_status_task.si(
-                        job_id=job_id,
-                        status=JobStatus.COMPLETED,
-                        message="Query Completed",
-                    ),
                 )
                 workflow.apply_async(
-                    link_error=update_job_status_task.si(#fix: changed for si, to not blow up when a error happens
+                    link_error=update_job_status_task.si(  # fix: changed for si, to not blow up when a error happens
                         job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
                     )
                 )
