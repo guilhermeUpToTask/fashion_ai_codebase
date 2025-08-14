@@ -1,5 +1,5 @@
 #! /usr/bin/env bash
-
+# Copy openapi schema from backend and paste inside frontend dir, then generate client using openapi-ts
 set -e
 set -x
 
@@ -11,4 +11,4 @@ cd ..
 mv openapi.json ../frontend/
 cd ../frontend
 npm run generate-client
-npx biome format --write ./src/client
+#npx biome format --write ./src/client
