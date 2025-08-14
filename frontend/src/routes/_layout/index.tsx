@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button"
 import { createFileRoute } from "@tanstack/react-router"
-import Categories from "@/components/Categories"
 import useAuth from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/_layout/")({
@@ -24,7 +23,6 @@ function Dashboard() {
           <p>Welcome back, nice to see you again!</p>
           <Button onClick={handleLogout}>LogOut</Button>
         </div>
-        <Categories/>
       </div>
     </>
   )

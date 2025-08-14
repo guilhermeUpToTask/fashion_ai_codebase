@@ -1,6 +1,6 @@
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm, type SubmitHandler } from "react-hook-form";
 import useAuth, { isLoggedIn } from "@/hooks/useAuth";
-import { Body_auth_login_acces_token as AccessToken } from "../client";
+import type { BodyAuthLoginAccesToken } from "@/client";
 import {
     createFileRoute,
     redirect,
@@ -22,13 +22,13 @@ export const Route = createFileRoute("/login")({
 });
 
 function Login() {
-    const { loginMutation, resetError } = useAuth();
+    const { loginMutation } = useAuth();
 
     const {
         register,
         handleSubmit,
         formState: { isSubmitting },
-    } = useForm<AccessToken>({
+    } = useForm<BodyAuthLoginAccesToken>({
         mode: "onBlur",
         criteriaMode: "all",
         defaultValues: {
@@ -37,15 +37,14 @@ function Login() {
         },
     });
 
-    const onSubmit: SubmitHandler<AccessToken> = async (data) => {
+    const onSubmit: SubmitHandler<BodyAuthLoginAccesToken> = async (data) => {
         if (isSubmitting) return;
-        console.log("data",data)
-        resetError();
 
         try {
+            // loginMutation expects the full object with 'body'
             await loginMutation.mutateAsync(data);
         } catch {
-            // error is handled by useAuth hook
+            // error handled globally by React Query
         }
     };
 
