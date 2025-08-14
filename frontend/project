@@ -1,0 +1,12 @@
+name:react-ts-tailwind-shadcn-template
+deps: 
+tanstack query= checked
+tanstack/react-router = checked
+react hook forms = checked
+axios = checked
+tailwind css = checked
+shadcn = checked
+typescript = checked
+vite = checked
+openapi-ts = partial checked, needs to test with a api endpoint, ad some configs
+prettier or biome
