@@ -3,8 +3,11 @@ import { Search, User, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FASHION_THEME } from '@/lib/constants';
+import { isLoggedIn } from '@/hooks/useAuth';
 
 export function Header() {
+  const loggedIn = isLoggedIn();
+
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
       <div className={FASHION_THEME.spacing.container}>
@@ -34,6 +37,14 @@ export function Header() {
             <button className="text-[#0F172A] hover:text-[#C99B6A] transition-colors">
               About
             </button>
+            {loggedIn && (
+              <Link 
+                to="/dashboard" 
+                className="text-[#0F172A] hover:text-[#C99B6A] transition-colors"
+              >
+                Dashboard
+              </Link>
+            )}
           </nav>
 
           {/* Search Bar */}
@@ -52,9 +63,19 @@ export function Header() {
             <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A]">
               <Search className="w-5 h-5 lg:hidden" />
             </Button>
-            <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A]">
-              <User className="w-5 h-5" />
-            </Button>
+            {loggedIn ? (
+              <Link to="/dashboard">
+                <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A]">
+                  <User className="w-5 h-5" />
+                </Button>
+              </Link>
+            ) : (
+              <Link to="/login">
+                <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A]">
+                  <User className="w-5 h-5" />
+                </Button>
+              </Link>
+            )}
             <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A] relative">
               <ShoppingBag className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 bg-[#C99B6A] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">

@@ -1,17 +1,9 @@
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { Outlet, createFileRoute } from "@tanstack/react-router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { isLoggedIn } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_layout")({
     component: Layout,
-    beforeLoad: async () => {
-        if (!isLoggedIn()) {
-            throw redirect({
-                to: "/login",
-            });
-        }
-    },
 });
 
 function Layout() {
