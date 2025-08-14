@@ -1,56 +1,93 @@
 import { Button } from '@/components/ui/button';
 import { FASHION_THEME } from '@/lib/constants';
+import { Upload, Search, Brain } from 'lucide-react';
 
 export function Hero() {
   return (
-    <section className="relative bg-gradient-to-r from-[#F7F7F8] to-[#E5E7EB] overflow-hidden">
+    <section className="relative bg-gradient-to-br from-[#F7F7F8] via-white to-[#E5E7EB] overflow-hidden">
       <div className={FASHION_THEME.spacing.container}>
         <div className="relative z-10 py-20 lg:py-32">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            {/* Content */}
-            <div className="text-center lg:text-left">
+          <div className="text-center max-w-4xl mx-auto">
+            {/* Main Headline */}
+            <div className="mb-8">
               <h1 className="text-4xl lg:text-6xl font-bold text-[#0F172A] mb-6 leading-tight">
-                Discover Your
-                <span className="block text-[#C99B6A]">Perfect Style</span>
+                Fashion AI
+                <span className="block text-[#C99B6A]">Image Search</span>
               </h1>
-              <p className="text-lg text-[#6B7280] mb-8 max-w-lg mx-auto lg:mx-0">
-                Explore our curated collection of timeless fashion pieces. From casual essentials 
-                to statement pieces, find what makes you feel confident and beautiful.
+              <p className="text-xl lg:text-2xl text-[#6B7280] max-w-3xl mx-auto leading-relaxed">
+                A proof of concept demonstrating AI-powered visual search for fashion using 
+                <span className="font-semibold text-[#1F6F8B]"> YOLOv8</span> and 
+                <span className="font-semibold text-[#1F6F8B]"> CLIP</span> models
               </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+            </div>
+
+            {/* Two Main Features */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+              {/* Feature 1: Index Products */}
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-gray-200 shadow-lg">
+                <div className="w-16 h-16 bg-[#C99B6A] rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Upload className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="text-2xl font-bold text-[#0F172A] mb-3">
+                  Index Product Images
+                </h3>
+                <p className="text-[#6B7280] mb-4">
+                  Upload product images to be automatically processed by AI. 
+                  The system detects clothing items, generates semantic labels, 
+                  and stores them in a vector database for similarity search.
+                </p>
                 <Button 
                   size="lg" 
-                  className="bg-[#C99B6A] hover:bg-[#B08A5A] text-white px-8 py-3 text-lg"
+                  className="bg-[#C99B6A] hover:bg-[#B08A5A] text-white px-6 py-3"
                 >
-                  Shop Now
+                  <Upload className="w-5 h-5 mr-2" />
+                  Index Products
                 </Button>
+              </div>
+
+              {/* Feature 2: Query Similar */}
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-gray-200 shadow-lg">
+                <div className="w-16 h-16 bg-[#1F6F8B] rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Search className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="text-2xl font-bold text-[#0F172A] mb-3">
+                  Find Similar Clothes
+                </h3>
+                <p className="text-[#6B7280] mb-4">
+                  Upload any image containing clothing to find visually similar 
+                  products from your indexed catalog using AI-powered similarity search.
+                </p>
                 <Button 
                   variant="outline" 
                   size="lg" 
-                  className="border-[#C99B6A] text-[#C99B6A] hover:bg-[#C99B6A] hover:text-white px-8 py-3 text-lg"
+                  className="border-[#1F6F8B] text-[#1F6F8B] hover:bg-[#1F6F8B] hover:text-white px-6 py-3"
                 >
-                  View Collections
+                  <Search className="w-5 h-5 mr-2" />
+                  Search Similar
                 </Button>
               </div>
             </div>
 
-            {/* Visual Element */}
-            <div className="relative">
-              <div className="relative z-10">
-                <div className="w-full h-96 lg:h-[500px] bg-gradient-to-br from-[#C99B6A] to-[#1F6F8B] rounded-2xl shadow-2xl flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mb-4 mx-auto">
-                      <span className="text-4xl">👗</span>
-                    </div>
-                    <p className="text-xl font-medium">Fashion Forward</p>
-                    <p className="text-sm opacity-90">Discover the latest trends</p>
-                  </div>
-                </div>
+            {/* Tech Stack */}
+            <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-gray-200">
+              <h4 className="text-lg font-semibold text-[#0F172A] mb-4 flex items-center justify-center">
+                <Brain className="w-5 h-5 mr-2 text-[#C99B6A]" />
+                Powered by Advanced AI Models
+              </h4>
+              <div className="flex flex-wrap justify-center gap-4 text-sm">
+                <span className="bg-[#C99B6A]/10 text-[#C99B6A] px-3 py-1 rounded-full font-medium">
+                  YOLOv8 - Object Detection
+                </span>
+                <span className="bg-[#1F6F8B]/10 text-[#1F6F8B] px-3 py-1 rounded-full font-medium">
+                  CLIP - Semantic Understanding
+                </span>
+                <span className="bg-[#6B7280]/10 text-[#6B7280] px-3 py-1 rounded-full font-medium">
+                  Vector Database
+                </span>
+                <span className="bg-[#C99B6A]/10 text-[#C99B6A] px-3 py-1 rounded-full font-medium">
+                  Async Processing
+                </span>
               </div>
-              
-              {/* Decorative elements */}
-              <div className="absolute -top-4 -right-4 w-20 h-20 bg-[#C99B6A] rounded-full opacity-20"></div>
-              <div className="absolute -bottom-4 -left-4 w-16 h-16 bg-[#1F6F8B] rounded-full opacity-20"></div>
             </div>
           </div>
         </div>

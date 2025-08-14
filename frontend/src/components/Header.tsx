@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { Search, User, ShoppingBag } from 'lucide-react';
+import { Search, User, Upload, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FASHION_THEME } from '@/lib/constants';
@@ -15,9 +15,9 @@ export function Header() {
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-[#C99B6A] rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">F</span>
+              <Brain className="text-white w-5 h-5" />
             </div>
-            <span className="text-xl font-bold text-[#0F172A]">Fashion</span>
+            <span className="text-xl font-bold text-[#0F172A]">Fashion AI</span>
           </Link>
 
           {/* Navigation */}
@@ -28,11 +28,13 @@ export function Header() {
             >
               Home
             </Link>
-            <button className="text-[#0F172A] hover:text-[#C99B6A] transition-colors">
-              Shop
+            <button className="text-[#0F172A] hover:text-[#C99B6A] transition-colors flex items-center space-x-1">
+              <Upload className="w-4 h-4" />
+              <span>Index Images</span>
             </button>
-            <button className="text-[#0F172A] hover:text-[#C99B6A] transition-colors">
-              Collections
+            <button className="text-[#0F172A] hover:text-[#1F6F8B] transition-colors flex items-center space-x-1">
+              <Search className="w-4 h-4" />
+              <span>Search Similar</span>
             </button>
             <button className="text-[#0F172A] hover:text-[#C99B6A] transition-colors">
               About
@@ -52,7 +54,7 @@ export function Header() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Search products..."
+                placeholder="Search indexed products..."
                 className="pl-10 bg-gray-50 border-gray-200 focus:border-[#C99B6A] focus:ring-[#C99B6A]"
               />
             </div>
@@ -77,10 +79,7 @@ export function Header() {
               </Link>
             )}
             <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A] relative">
-              <ShoppingBag className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 bg-[#C99B6A] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                0
-              </span>
+              <Upload className="w-5 h-5" />
             </Button>
           </div>
         </div>
