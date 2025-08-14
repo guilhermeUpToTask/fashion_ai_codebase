@@ -7,6 +7,7 @@ set -x
 cd ..
 cd backend
 source venv/bin/activate
+
 cd app
 python3 -c "import main; import json; print(json.dumps(main.app.openapi()))" > ../openapi.json
 cd ..
