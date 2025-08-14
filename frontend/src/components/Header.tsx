@@ -28,14 +28,20 @@ export function Header() {
             >
               Home
             </Link>
-            <button className="text-[#0F172A] hover:text-[#C99B6A] transition-colors flex items-center space-x-1">
+            <Link 
+              to="/products" 
+              className="text-[#0F172A] hover:text-[#C99B6A] transition-colors flex items-center space-x-1"
+            >
               <Upload className="w-4 h-4" />
               <span>Index Images</span>
-            </button>
-            <button className="text-[#0F172A] hover:text-[#1F6F8B] transition-colors flex items-center space-x-1">
+            </Link>
+            <Link 
+              to="/query" 
+              className="text-[#0F172A] hover:text-[#1F6F8B] transition-colors flex items-center space-x-1"
+            >
               <Search className="w-4 h-4" />
               <span>Search Similar</span>
-            </button>
+            </Link>
             <button className="text-[#0F172A] hover:text-[#C99B6A] transition-colors">
               About
             </button>
@@ -78,9 +84,11 @@ export function Header() {
                 </Button>
               </Link>
             )}
-            <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A] relative">
-              <Upload className="w-5 h-5" />
-            </Button>
+            <Link to="/products">
+              <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A] relative">
+                <Upload className="w-5 h-5" />
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

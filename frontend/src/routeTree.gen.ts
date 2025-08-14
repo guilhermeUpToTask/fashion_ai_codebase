@@ -14,6 +14,8 @@ import { Route as ProtectedRouteImport } from './routes/_protected'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as ProtectedDashboardRouteImport } from './routes/_protected/dashboard'
+import { Route as LayoutQueryRouteImport } from './routes/_layout/query'
+import { Route as LayoutProductsRouteImport } from './routes/_layout/products'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -38,14 +40,28 @@ const ProtectedDashboardRoute = ProtectedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => ProtectedRoute,
 } as any)
+const LayoutQueryRoute = LayoutQueryRouteImport.update({
+  id: '/query',
+  path: '/query',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutProductsRoute = LayoutProductsRouteImport.update({
+  id: '/products',
+  path: '/products',
+  getParentRoute: () => LayoutRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
+  '/products': typeof LayoutProductsRoute
+  '/query': typeof LayoutQueryRoute
   '/dashboard': typeof ProtectedDashboardRoute
   '/': typeof LayoutIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/products': typeof LayoutProductsRoute
+  '/query': typeof LayoutQueryRoute
   '/dashboard': typeof ProtectedDashboardRoute
   '/': typeof LayoutIndexRoute
 }
@@ -54,19 +70,23 @@ export interface FileRoutesById {
   '/_layout': typeof LayoutRouteWithChildren
   '/_protected': typeof ProtectedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_layout/products': typeof LayoutProductsRoute
+  '/_layout/query': typeof LayoutQueryRoute
   '/_protected/dashboard': typeof ProtectedDashboardRoute
   '/_layout/': typeof LayoutIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/login' | '/dashboard' | '/'
+  fullPaths: '/login' | '/products' | '/query' | '/dashboard' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/dashboard' | '/'
+  to: '/login' | '/products' | '/query' | '/dashboard' | '/'
   id:
     | '__root__'
     | '/_layout'
     | '/_protected'
     | '/login'
+    | '/_layout/products'
+    | '/_layout/query'
     | '/_protected/dashboard'
     | '/_layout/'
   fileRoutesById: FileRoutesById
@@ -114,14 +134,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedDashboardRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/_layout/query': {
+      id: '/_layout/query'
+      path: '/query'
+      fullPath: '/query'
+      preLoaderRoute: typeof LayoutQueryRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/products': {
+      id: '/_layout/products'
+      path: '/products'
+      fullPath: '/products'
+      preLoaderRoute: typeof LayoutProductsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
   }
 }
 
 interface LayoutRouteChildren {
+  LayoutProductsRoute: typeof LayoutProductsRoute
+  LayoutQueryRoute: typeof LayoutQueryRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
+  LayoutProductsRoute: LayoutProductsRoute,
+  LayoutQueryRoute: LayoutQueryRoute,
   LayoutIndexRoute: LayoutIndexRoute,
 }
 
