@@ -1,5 +1,6 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
-
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 import { isLoggedIn } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_layout")({
@@ -15,10 +16,12 @@ export const Route = createFileRoute("/_layout")({
 
 function Layout() {
     return (
-        <div className="flex flex-col h-screen">
-            <div className="flex flex-1 flex-col p-4 overflow-y-auto">
+        <div className="flex flex-col min-h-screen">
+            <Header />
+            <main className="flex-1">
                 <Outlet />
-            </div>
+            </main>
+            <Footer />
         </div>
     );
 }
