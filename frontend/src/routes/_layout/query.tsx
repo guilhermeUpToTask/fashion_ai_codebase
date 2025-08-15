@@ -71,10 +71,6 @@ export function QueryPage() {
     if (!jobStatus) return null;
     
     switch (jobStatus.status) {
-      case 'queued':
-      case 'started':
-      case 'detecting':
-      case 'labelling':
       case 'querying':
         return <Clock className="w-5 h-5 text-[#C99B6A] animate-pulse" />;
       case 'completed':
@@ -125,6 +121,28 @@ export function QueryPage() {
                 <CardTitle className="text-lg">Clothing Item {index + 1}</CardTitle>
               </CardHeader>
               <CardContent>
+                {/* Detected Clothing Item Image */}
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-[#0F172A] mb-2">Detected Item:</h4>
+                  <div className="w-32 h-32 bg-gray-100 rounded-lg overflow-hidden">
+                    <img
+                      src={`${import.meta.env.VITE_API_URL}/api/images/${cloth.crop_img_id}/download`}
+                      alt="Detected clothing item"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Fallback to placeholder if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.nextElementSibling?.classList.remove('hidden');
+                      }}
+                    />
+                    {/* Fallback placeholder (hidden by default) */}
+                    <div className="w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center hidden">
+                      <ImageIcon className="w-8 h-8 text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+
                 {cloth.matched_images?.length > 0 ? (
                   <div className="space-y-3">
                     <p className="text-sm text-[#6B7280]">
@@ -132,26 +150,58 @@ export function QueryPage() {
                     </p>
                     {cloth.matched_images.map((match: ClothMatch, matchIndex: number) => (
                       <div key={matchIndex} className="bg-gray-50 rounded-lg p-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            {match.product_name && (
-                              <p className="font-medium text-[#0F172A]">
-                                {match.product_name}
-                              </p>
-                            )}
-                            {match.product_description && (
-                              <p className="text-sm text-[#6B7280] mt-1">
-                                {match.product_description}
-                              </p>
+                        <div className="flex gap-4">
+                          {/* Product Image */}
+                          <div className="flex-shrink-0">
+                            {match.image_id ? (
+                              <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
+                                <img
+                                  src={`${import.meta.env.VITE_API_URL}/api/images/${match.image_id}/download`}
+                                  alt={match.product_name || 'Matched product'}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    // Fallback to placeholder if image fails to load
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    target.nextElementSibling?.classList.remove('hidden');
+                                  }}
+                                />
+                                {/* Fallback placeholder (hidden by default) */}
+                                <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center hidden">
+                                  <ImageIcon className="w-6 h-6 text-gray-400" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+                                <ImageIcon className="w-6 h-6 text-gray-400" />
+                              </div>
                             )}
                           </div>
-                          <div className="text-right">
-                            <span className="inline-block bg-[#C99B6A] text-white text-xs px-2 py-1 rounded-full">
-                              {Math.round(match.score * 100)}% match
-                            </span>
-                            <p className="text-xs text-[#6B7280] mt-1">
-                              Rank: {match.rank}
-                            </p>
+                          
+                          {/* Product Information */}
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                {match.product_name && (
+                                  <p className="font-medium text-[#0F172A]">
+                                    {match.product_name}
+                                  </p>
+                                )}
+                                {match.product_description && (
+                                  <p className="text-sm text-[#6B7280] mt-1">
+                                    {match.product_description}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <span className="inline-block bg-[#C99B6A] text-white text-xs px-2 py-1 rounded-full">
+                                  {Math.round(match.score * 100)}% match
+                                </span>
+                                <p className="text-xs text-[#6B7280] mt-1">
+                                  Rank: {match.rank}
+                                </p>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>

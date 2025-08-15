@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FASHION_THEME } from "@/lib/constants";
-import { Plus, Upload, Edit, Trash2 } from "lucide-react";
-import { useProducts, useCreateProduct, useDeleteProduct } from "@/hooks/useProducts";
+import { Plus, Upload, Edit, Trash2, Image as ImageIcon } from "lucide-react";
+import { useProductsWithImages, useCreateProduct, useDeleteProduct } from "@/hooks/useProducts";
 import { useIndexingJob } from "@/hooks/useJobs";
 import { toast } from "sonner";
 
@@ -20,6 +20,17 @@ interface ProductFormData {
   sku: string;
 }
 
+interface ProductWithImages {
+  id?: string;
+  name: string;
+  description?: string | null;
+  price: string;
+  sku?: string | null;
+  image_ids: string[];
+}
+
+//TODO: use product card to show product list
+
 export function ProductsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState<ProductFormData>({
@@ -31,7 +42,7 @@ export function ProductsPage() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [indexingProductId, setIndexingProductId] = useState<string | null>(null);
 
-  const { data: products = [], isLoading, refetch } = useProducts(100);
+  const { data: products = [], isLoading, refetch } = useProductsWithImages(100);
   const createProductMutation = useCreateProduct();
   const deleteProductMutation = useDeleteProduct();
   const indexingJobMutation = useIndexingJob();
@@ -204,8 +215,34 @@ export function ProductsPage() {
               </p>
             </div>
           ) : (
-            products.map((product) => (
+            products.map((product: ProductWithImages) => (
               <Card key={product.id} className="overflow-hidden">
+                {/* Product Image */}
+                <div className="aspect-square bg-gray-100 overflow-hidden">
+                  {product.image_ids && product.image_ids.length > 0 ? (
+                    <img
+                      src={`${import.meta.env.VITE_API_URL}/api/images/${product.image_ids[0]}/download`}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Fallback to placeholder if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.nextElementSibling?.classList.remove('hidden');
+                      }}
+                    />
+                  ) : null}
+                  {/* Fallback placeholder (hidden by default if image exists) */}
+                  <div className={`aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center ${product.image_ids && product.image_ids.length > 0 ? 'hidden' : ''}`}>
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-[#C99B6A] rounded-full flex items-center justify-center mx-auto mb-2">
+                        <ImageIcon className="w-8 h-8 text-white" />
+                      </div>
+                      <p className="text-sm text-gray-500">No Image</p>
+                    </div>
+                  </div>
+                </div>
+
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start">
                     <div>

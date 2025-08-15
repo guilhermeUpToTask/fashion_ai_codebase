@@ -1,11 +1,15 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Heart, ShoppingBag } from 'lucide-react';
+import { Heart, ShoppingBag, Image as ImageIcon } from 'lucide-react';
 import type { Product } from '@/client/types.gen';
 
+interface ProductWithImages extends Product {
+  image_ids: string[];
+}
+
 interface ProductCardProps {
-  product: Product;
-  onAddToCart?: (product: Product) => void;
+  product: ProductWithImages;
+  onAddToCart?: (product: ProductWithImages) => void;
 }
 
 export function ProductCard({ product, onAddToCart }: ProductCardProps) {
@@ -15,18 +19,47 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
     }
   };
 
+  // Get the first image ID for display (you can implement image carousel later)
+  const primaryImageId = product.image_ids?.[0];
   return (
     <Card className="group overflow-hidden hover:shadow-lg transition-all duration-300 border-gray-200 hover:border-[#C99B6A]">
       <div className="relative">
-        {/* Product Image Placeholder */}
-        <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-[#C99B6A] rounded-full flex items-center justify-center mx-auto mb-2">
-              <span className="text-white text-2xl">👕</span>
+        {/* Product Image */}
+        {primaryImageId ? (
+          <div className="aspect-square bg-gray-100 overflow-hidden">
+            <img
+            //TODO: needs to fix the source link for the image, should point to the backend endpoint where its download the image
+              src={`${import.meta.env.VITE_API_URL}/api/images/${primaryImageId}/download`}
+              alt={product.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              onError={(e) => {
+                // Fallback to placeholder if image fails to load
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                target.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+            {/* Fallback placeholder (hidden by default) */}
+            <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center hidden">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-[#C99B6A] rounded-full flex items-center justify-center mx-auto mb-2">
+                  <ImageIcon className="w-8 h-8 text-white" />
+                </div>
+                <p className="text-sm text-gray-500">Image Unavailable</p>
+              </div>
             </div>
-            <p className="text-sm text-gray-500">Product Image</p>
           </div>
-        </div>
+        ) : (
+          // No image available - show placeholder
+          <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-[#C99B6A] rounded-full flex items-center justify-center mx-auto mb-2">
+                <ImageIcon className="w-8 h-8 text-white" />
+              </div>
+              <p className="text-sm text-gray-500">No Image</p>
+            </div>
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">

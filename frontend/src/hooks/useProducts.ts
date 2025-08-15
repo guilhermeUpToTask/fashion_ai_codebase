@@ -43,25 +43,6 @@ export function useProduct(productId: string) {
   });
 }
 
-export function useFeaturedProducts(limit: number = 8) {
-  return useQuery({
-    queryKey: ['featured-products', { limit }],
-    queryFn: async () => {
-      try {
-        const response = await Products.listProducts({
-          query: { limit }
-        });
-        return response.data;
-      } catch (error) {
-        console.warn('API call failed, using mock featured products:', error);
-        // Return mock data if API fails
-        return MOCK_PRODUCTS.slice(0, limit);
-      }
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    retry: 1,
-  });
-}
 
 export function useCreateProduct() {
   const queryClient = useQueryClient();
@@ -116,6 +97,96 @@ export function useDeleteProduct() {
   });
 }
 
+export function useProductsWithImages(limit?: number) {
+  return useQuery({
+    queryKey: ['products-with-images', { limit }],
+    queryFn: async () => {
+      try {
+        // Fetch products and product images in parallel
+        const [productsResponse, productImagesResponse] = await Promise.all([
+          Products.listProducts({
+            query: { limit: limit || 20 }
+          }),
+          Products.listProductsImages({
+            query: { limit: 100 } // Get more images to ensure we have all product images
+          })
+        ]);
+
+        const products = productsResponse.data || [];
+        const productImages = productImagesResponse.data || [];
+
+        // Create a map of product_id to image_ids
+        const productImageMap = new Map<string, string[]>();
+        productImages.forEach(pi => {
+          if (!productImageMap.has(pi.product_id)) {
+            productImageMap.set(pi.product_id, []);
+          }
+          productImageMap.get(pi.product_id)!.push(pi.image_id);
+        });
+
+        // Enhance products with their image IDs
+        const productsWithImages = products.map(product => ({
+          ...product,
+          image_ids: productImageMap.get(product.id || '') || []
+        }));
+
+        return productsWithImages;
+      } catch (error) {
+        console.warn('API call failed, using mock data:', error);
+        // Return mock data if API fails
+        return MOCK_PRODUCTS_WITH_IMAGES.slice(0, limit || 20);
+      }
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 1, // Only retry once
+  });
+}
+
+export function useFeaturedProductsWithImages(limit: number = 8) {
+  return useQuery({
+    queryKey: ['featured-products-with-images', { limit }],
+    queryFn: async () => {
+      try {
+        // Fetch products and product images in parallel
+        const [productsResponse, productImagesResponse] = await Promise.all([
+          Products.listProducts({
+            query: { limit }
+          }),
+          Products.listProductsImages({
+            query: { limit: 100 } // Get more images to ensure we have all product images
+          })
+        ]);
+
+        const products = productsResponse.data || [];
+        const productImages = productImagesResponse.data || [];
+
+        // Create a map of product_id to image_ids
+        const productImageMap = new Map<string, string[]>();
+        productImages.forEach(pi => {
+          if (!productImageMap.has(pi.product_id)) {
+            productImageMap.set(pi.product_id, []);
+          }
+          productImageMap.get(pi.product_id)!.push(pi.image_id);
+        });
+
+        // Enhance products with their image IDs
+        const productsWithImages = products.map(product => ({
+          ...product,
+          image_ids: productImageMap.get(product.id || '') || []
+        }));
+
+        return productsWithImages;
+      } catch (error) {
+        console.warn('API call failed, using mock featured products:', error);
+        // Return mock data if API fails
+        return MOCK_PRODUCTS_WITH_IMAGES.slice(0, limit);
+      }
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    retry: 1,
+  });
+}
+
 // Mock data for development when API is not available
 const MOCK_PRODUCTS = [
   {
@@ -145,5 +216,41 @@ const MOCK_PRODUCTS = [
     description: 'Stylish leather crossbody bag with adjustable strap',
     price: '79.99',
     sku: 'LB004-BR-ONE'
+  }
+]; 
+
+// Mock data for development when API is not available
+const MOCK_PRODUCTS_WITH_IMAGES = [
+  {
+    id: '1',
+    name: 'Classic Denim Jacket',
+    description: 'Timeless denim jacket perfect for any casual occasion',
+    price: '89.99',
+    sku: 'DJ001-BL-42',
+    image_ids: ['mock-image-1', 'mock-image-2']
+  },
+  {
+    id: '2',
+    name: 'Premium Cotton T-Shirt',
+    description: 'Soft, breathable cotton t-shirt in classic white',
+    price: '29.99',
+    sku: 'TS002-WH-L',
+    image_ids: ['mock-image-3']
+  },
+  {
+    id: '3',
+    name: 'Slim Fit Chinos',
+    description: 'Modern slim fit chinos in versatile khaki',
+    price: '59.99',
+    sku: 'CH003-KH-32',
+    image_ids: ['mock-image-4', 'mock-image-5']
+  },
+  {
+    id: '4',
+    name: 'Leather Crossbody Bag',
+    description: 'Stylish leather crossbody bag with adjustable strap',
+    price: '79.99',
+    sku: 'LB004-BR-ONE',
+    image_ids: ['mock-image-6']
   }
 ]; 

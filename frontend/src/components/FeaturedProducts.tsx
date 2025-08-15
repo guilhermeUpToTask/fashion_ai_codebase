@@ -3,10 +3,18 @@ import { ProductGridSkeleton } from './ProductSkeleton';
 import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
 import { FASHION_THEME } from '@/lib/constants';
-import type { Product } from '@/client/types.gen';
+
+interface ProductWithImages {
+  id?: string;
+  name: string;
+  description?: string | null;
+  price: string;
+  sku?: string | null;
+  image_ids: string[];
+}
 
 interface FeaturedProductsProps {
-  products: Product[];
+  products: ProductWithImages[];
   title?: string;
   subtitle?: string;
   showViewAll?: boolean;
@@ -20,7 +28,7 @@ export function FeaturedProducts({
   showViewAll = true,
   isLoading = false
 }: FeaturedProductsProps) {
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = (product: ProductWithImages) => {
     // TODO: Implement add to cart functionality
     console.log('Add to cart:', product);
   };
