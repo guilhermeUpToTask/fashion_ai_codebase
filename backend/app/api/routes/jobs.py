@@ -205,21 +205,20 @@ async def create_indexing_job(
                 processing_details="Job queued for processing",
             )
             session.add(job)
-            session.flush()
 
-            indexing_orchestrator_task.delay(job.id)
+        indexing_orchestrator_task.delay(job.id)
 
-            # we can refactor later to spread the job args and join the bools
-            return JobResponse(
-                job_id=job.id,
-                status=job.status,
-                job_type=job.type,
-                message=job.processing_details,
-                created_at=job.created_at,
-                is_completed=False,
-                is_failed=False,
-                is_processing=False,  # still queued
-            )
+        # we can refactor later to spread the job args and join the bools
+        return JobResponse(
+            job_id=job.id,
+            status=job.status,
+            job_type=job.type,
+            message=job.processing_details,
+            created_at=job.created_at,
+            is_completed=False,
+            is_failed=False,
+            is_processing=False,  # still queued
+        )
     except ValueError as e:
         logger.warning(f"Validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -279,20 +278,18 @@ async def create_querying_job(
                 processing_details="Job queued for processing",
             )
             session.add(job)
-            session.flush()
 
-            querying_orchestrator_task.delay(job.id)
-
-            return JobResponse(
-                job_id=job.id,
-                status=job.status,
-                job_type=job.type,
-                message=job.processing_details,
-                created_at=job.created_at,
-                is_completed=False,
-                is_failed=False,
-                is_processing=False,
-            )
+        querying_orchestrator_task.delay(job.id)
+        return JobResponse(
+            job_id=job.id,
+            status=job.status,
+            job_type=job.type,
+            message=job.processing_details,
+            created_at=job.created_at,
+            is_completed=False,
+            is_failed=False,
+            is_processing=False,
+        )
     except ValueError as e:
         logger.warning(f"Validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
