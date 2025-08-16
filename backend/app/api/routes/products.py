@@ -93,6 +93,7 @@ async def update_product(
     return product
 
 #TODO: its needs to delete from the vector db aswell
+#TODO: needs soft deleted strategy
 @router.delete(
     "/{product_id}",
     status_code=status.HTTP_204_NO_CONTENT,
