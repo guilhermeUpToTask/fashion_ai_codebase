@@ -439,7 +439,7 @@ def update_job_status_task(
 def start_indexing_chord(self, crop_ids: List[UUID], product_id: UUID, job_id: UUID):
     header = [
         label_img_task.s(c, BucketName.PRODUCT).set(
-            link_error=update_job_status_task.s(
+            link_error=update_job_status_task.si(
                 job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
             )
         )
@@ -456,7 +456,7 @@ def start_indexing_chord(self, crop_ids: List[UUID], product_id: UUID, job_id: U
         update_job_status_task.si(
             job_id, JobStatus.COMPLETED, "Indexing Completed"
         ).set(
-            link_error=update_job_status_task.s(
+            link_error=update_job_status_task.si(
                 job_id, JobStatus.FAILED, "Job Failed in indexing Product Image"
             )
         ),
@@ -520,7 +520,7 @@ def start_querying_pipeline_task(
                 query_result_id=query_result_id, collection_name=collection_name
             ),
         ).set(
-            link_error=update_job_status_task.s(
+            link_error=update_job_status_task.si(
                 job_id, JobStatus.FAILED, "Job Failed in querying pipeline"
             )
         )

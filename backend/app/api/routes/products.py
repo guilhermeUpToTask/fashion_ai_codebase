@@ -5,8 +5,10 @@ from fastapi import APIRouter, HTTPException, Path, Query, status
 from sqlmodel import col, delete, select
 
 from api.deps import SessionDep, CurrentUser
+from core.config import settings
 from models.job import Job
 from core import storage
+from core.vector_db.chroma_db import chroma_client_wrapper
 from models.image import BUCKET_NAME_TO_S3, BucketName, ImageFile
 from models.product import ProductCreate, ProductImage, ProductUpdate
 from models import Product
@@ -92,8 +94,9 @@ async def update_product(
 
     return product
 
-#TODO: its needs to delete from the vector db aswell
-#TODO: needs soft deleted strategy
+
+# TODO: its needs to delete from the vector db aswell
+# TODO: needs soft deleted strategy, in the vector db the strategy is use a is_indexable or is_deleted bool that will filter the deletes fields from it
 @router.delete(
     "/{product_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -117,6 +120,11 @@ async def delete_product(
             )
 
         img_ids: List[UUID] = [prod_img.image_id for prod_img in product.product_images]
+        primary_crop: ProductImage | None = next(
+            (img for img in product.product_images if img.is_primary_crop),
+            None,  # default if none found
+        )
+        
         if not img_ids:
             session.delete(product)
             return
@@ -129,7 +137,15 @@ async def delete_product(
         session.execute(delete(Job).where(col(Job.input_product_id).in_([product_id])))
         session.delete(product)
 
+        #clear image in s3
         storage.delete_files_from_s3_batch(bucket_name=real_bucket, keys=imgs_filenames)
+
+        #delete vector in the chromadb
+        chroma_client = chroma_client_wrapper.get_client()
+        img_collection = chroma_client.get_or_create_collection(settings.CHROMA_PRODUCT_IMAGE_COLLECTION)
+        if primary_crop:
+            img_collection.delete(ids=[str(primary_crop.image_id)])
+            
         # i use execute here, because current version of sqlmodel does not yet aplied this patch:https://github.com/fastapi/sqlmodel/pull/1342
         session.execute(delete(ImageFile).where(col(ImageFile.id).in_(img_ids)))
 
