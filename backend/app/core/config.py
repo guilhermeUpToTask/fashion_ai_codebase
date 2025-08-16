@@ -52,6 +52,9 @@ class Settings(BaseSettings):
             port=self.DATABASE_PORT,
             path=self.DATABASE_NAME,
         )
-    all_cors_origins: list[str] = ["*"]
+    all_cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ]
 
 settings = Settings()# type: ignore[call-arg] | because we load the args from the env
