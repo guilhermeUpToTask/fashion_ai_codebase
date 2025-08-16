@@ -61,3 +61,24 @@ add global exception handling middleware in FastAPI
 | **MEDIUM** | 4.3 | **Implement Resource Management:** Configure Docker resource limits and apply them in the cloud to ensure stability and prevent DoS attacks. | 🔵 To Do |
 | **MEDIUM** | 4.4 | **Establish Observability:** Integrate Prometheus and Grafana for comprehensive monitoring of APIs, job queues, and system health. | 🔵 To Do |
 | **LOW** | 4.5 | **Model Fine-Tuning Pipeline:** Use the human-verified dataset from the HITL tool to periodically fine-tune the YOLO and CLIP models. | 🔵 To Do |
+
+
+
+Pipeline outline (index & query must use the same code):
+
+Run detector (YOLOv8) → bbox.
+
+Expand bbox by 10–20% (configurable margin) to include context.
+
+Crop from source image.
+
+Pad the crop to square using reflect padding (or mean-color fill), then resize to model size (e.g. 224).
+
+Why reflect? it avoids injecting a new constant color that would bias CLIP. Pinterest emphasizes deterministic preprocess and domain handling — reflect/mean are safe choices. 
+arXiv
+
+Normalize using your model’s exact normalization (for FashionCLIP/CLIP use the same processor/mean/std or HF CLIPProcessor).
+
+Compute embedding (image branch + optionally text/label branch), L2-normalize, store with model_version and preprocess_version.
+
+At query-time: same steps → get query embedding → ANN search → top-K → re-rank by category/shape/metadata.
