@@ -61,6 +61,7 @@ class ImageFile(SQLModel, table=True):
     original_id: Optional[uuid.UUID] = Field(
         default=None,
         foreign_key="images.id",
+        ondelete="CASCADE",
         description="ID of original image if this is a crop",
     )
     original: Optional["ImageFile"] = Relationship(

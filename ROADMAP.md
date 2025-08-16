@@ -82,3 +82,6 @@ Normalize using your model’s exact normalization (for FashionCLIP/CLIP use the
 Compute embedding (image branch + optionally text/label branch), L2-normalize, store with model_version and preprocess_version.
 
 At query-time: same steps → get query embedding → ANN search → top-K → re-rank by category/shape/metadata.
+
+
+Needs to implement soft delete system for tables and for s3 files strategy

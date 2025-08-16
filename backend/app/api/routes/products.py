@@ -2,9 +2,12 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, Query, status
-from sqlmodel import select
+from sqlmodel import col, delete, select
 
 from api.deps import SessionDep, CurrentUser
+from models.job import Job
+from core import storage
+from models.image import BUCKET_NAME_TO_S3, BucketName, ImageFile
 from models.product import ProductCreate, ProductImage, ProductUpdate
 from models import Product
 
@@ -89,7 +92,7 @@ async def update_product(
 
     return product
 
-
+#TODO: its needs to delete from the vector db aswell
 @router.delete(
     "/{product_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -100,16 +103,36 @@ async def delete_product(
     session: SessionDep,
 ) -> None:
     """
-    Delete a product. Requires authenticated user.
+    Delete a product along with its images. Atomic: if S3 deletion fails, DB changes are rolled back. Requires authenticated user.
     """
-    product = session.get(Product, product_id)
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Product not found"
-        )
-    session.delete(product)
-    session.commit()
-    return None
+    real_bucket = BUCKET_NAME_TO_S3[BucketName.PRODUCT]
+
+    with session.begin():
+
+        product = session.get(Product, product_id)
+        if not product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Product not found"
+            )
+
+        img_ids: List[UUID] = [prod_img.image_id for prod_img in product.product_images]
+        if not img_ids:
+            session.delete(product)
+            return
+
+        imgs = session.exec(
+            select(ImageFile).where(col(ImageFile.id).in_(img_ids))
+        ).all()
+        imgs_filenames = [img.filename for img in imgs]
+
+        session.execute(delete(Job).where(col(Job.input_product_id).in_([product_id])))
+        session.delete(product)
+
+        storage.delete_files_from_s3_batch(bucket_name=real_bucket, keys=imgs_filenames)
+        # i use execute here, because current version of sqlmodel does not yet aplied this patch:https://github.com/fastapi/sqlmodel/pull/1342
+        session.execute(delete(ImageFile).where(col(ImageFile.id).in_(img_ids)))
+
+    return
 
 
 @router.get(
