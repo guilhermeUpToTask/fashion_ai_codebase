@@ -32,7 +32,10 @@ const queryClient = new QueryClient({
 });
 // ----- Tanstack Router Config -----
 
-const router = createRouter({ routeTree });
+export const router = createRouter({
+    routeTree,
+    scrollRestoration: true,
+});
 declare module "@tanstack/react-router" {
     interface Register {
         router: typeof router;
