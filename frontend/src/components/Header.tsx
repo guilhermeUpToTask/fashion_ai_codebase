@@ -78,11 +78,6 @@ export function Header() {
                 </Button>
               </Link>
             )}
-            <Link to="/products">
-              <Button variant="ghost" size="icon" className="text-[#0F172A] hover:text-[#C99B6A] relative">
-                <Upload className="w-5 h-5" />
-              </Button>
-            </Link>
           </div>
         </div>
       </div>
