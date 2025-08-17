@@ -1,2 +1,2 @@
 vm.overcommit_memory = 1 # needs if to use redis, and Ram instencifies services, be awere of how much swap is available
-Defina limites de memória com mem_limit
+define memory limits with mem_limit
