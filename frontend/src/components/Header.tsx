@@ -23,17 +23,11 @@ export function Header() {
           {/* Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
             <Link 
-              to="/" 
-              className="text-[#0F172A] hover:text-[#C99B6A] transition-colors"
-            >
-              Home
-            </Link>
-            <Link 
               to="/products" 
               className="text-[#0F172A] hover:text-[#C99B6A] transition-colors flex items-center space-x-1"
             >
               <Upload className="w-4 h-4" />
-              <span>Index Images</span>
+              <span>Index Products</span>
             </Link>
             <Link 
               to="/query" 
