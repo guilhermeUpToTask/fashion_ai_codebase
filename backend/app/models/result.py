@@ -9,7 +9,7 @@ class IndexingResult(SQLModel, table=True):
     __tablename__= "indexing_results" #type: ignore
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    job_id: uuid.UUID = Field(foreign_key="jobs.id", unique=True)
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", unique=True, ondelete="CASCADE")
     #input image and its crops created
     created_crop_ids: List[str] = Field(sa_column=Column(JSON))
     #stores the id of the specific image crop that was chosen as primary.
@@ -24,8 +24,8 @@ class QueryResultProductImage(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("cloth_id", "matched_image_id"),)
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    cloth_id: uuid.UUID = Field(foreign_key="query_result_cloths.id")
-    matched_image_id: uuid.UUID =  Field(foreign_key="images.id")
+    cloth_id: uuid.UUID = Field(foreign_key="query_result_cloths.id", ondelete="CASCADE")
+    matched_image_id: uuid.UUID =  Field(foreign_key="images.id", ondelete="CASCADE")
     score: float
     rank: int
     
@@ -35,8 +35,8 @@ class QueryResultCloth(SQLModel, table=True):
     __tablename__ = "query_result_cloths" #type: ignore
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    query_result_id: uuid.UUID = Field(foreign_key='query_results.id')
-    crop_img_id: uuid.UUID =  Field(foreign_key='images.id')
+    query_result_id: uuid.UUID = Field(foreign_key='query_results.id', ondelete="CASCADE")
+    crop_img_id: uuid.UUID =  Field(foreign_key='images.id', ondelete="CASCADE")
     
     
     query_result: "QueryResult" = Relationship(back_populates="cloths")
@@ -46,7 +46,7 @@ class QueryResultCloth(SQLModel, table=True):
 class QueryResult(SQLModel, table=True):
     __tablename__ = "query_results" #type: ignore
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    job_id: uuid.UUID = Field(foreign_key="jobs.id", unique=True)
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", unique=True, ondelete="CASCADE")
     model_version: str = Field(max_length=50)
     
     cloths: List["QueryResultCloth"] = Relationship(back_populates="query_result")
