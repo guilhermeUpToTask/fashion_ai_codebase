@@ -250,6 +250,23 @@ services:
             - "traefik.http.routers.chroma_db.rule=Host(`chroma_db.docker.localhost`)"
             - "traefik.http.routers.chroma_db.entrypoints=web"
             - "traefik.http.services.chroma_db.loadbalancer.server.port=8000"
+    frontend:
+        image: "${DOCKER_IMAGE_FRONTEND?Variable not set:latest}"
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile
+        container_name: fashion_ai_frontend
+        volumes:
+            - ./frontend/src:/app/src
+        depends_on:
+            - backend_api
+        networks:
+            - app-network
+        labels:
+            - "traefik.enable=true"
+            - "traefik.http.routers.frontend.rule=Host(`frontend.docker.localhost`)"
+            - "traefik.http.routers.frontend.entrypoints=web"
+            - "traefik.http.services.frontend.loadbalancer.server.port=80"
 
 #Database Volume
 volumes:
