@@ -221,7 +221,7 @@ export function ProductsPage() {
                 <div className="aspect-square bg-gray-100 overflow-hidden">
                   {product.image_ids && product.image_ids.length > 0 ? (
                     <img
-                      src={`${import.meta.env.VITE_API_URL}/api/images/${product.image_ids[0]}/download`}
+                      src={`${import.meta.env.VITE_API_URL}/images/${product.image_ids[0]}/download`}
                       alt={product.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {

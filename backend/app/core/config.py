@@ -54,7 +54,8 @@ class Settings(BaseSettings):
         )
     all_cors_origins: list[str] = [
         "http://localhost:5173",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "http://frontend.docker.localhost"
     ]
 
 settings = Settings()# type: ignore[call-arg] | because we load the args from the env

@@ -29,7 +29,7 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
           <div className="aspect-square bg-gray-100 overflow-hidden">
             <img
             //TODO: needs to fix the source link for the image, should point to the backend endpoint where its download the image
-              src={`${import.meta.env.VITE_API_URL}/api/images/${primaryImageId}/download`}
+              src={`${import.meta.env.VITE_API_URL}/images/${primaryImageId}/download`}
               alt={product.name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               onError={(e) => {

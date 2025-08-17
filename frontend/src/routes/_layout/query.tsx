@@ -126,7 +126,7 @@ export function QueryPage() {
                   <h4 className="text-sm font-medium text-[#0F172A] mb-2">Detected Item:</h4>
                   <div className="w-32 h-32 bg-gray-100 rounded-lg overflow-hidden">
                     <img
-                      src={`${import.meta.env.VITE_API_URL}/api/images/${cloth.crop_img_id}/download`}
+                      src={`${import.meta.env.VITE_API_URL}/images/${cloth.crop_img_id}/download`}
                       alt="Detected clothing item"
                       className="w-full h-full object-cover"
                       onError={(e) => {
@@ -156,7 +156,7 @@ export function QueryPage() {
                             {match.image_id ? (
                               <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
                                 <img
-                                  src={`${import.meta.env.VITE_API_URL}/api/images/${match.image_id}/download`}
+                                  src={`${import.meta.env.VITE_API_URL}/images/${match.image_id}/download`}
                                   alt={match.product_name || 'Matched product'}
                                   className="w-full h-full object-cover"
                                   onError={(e) => {

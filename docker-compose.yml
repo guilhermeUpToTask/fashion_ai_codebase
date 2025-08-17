@@ -47,7 +47,7 @@ services:
             timeout: 5s
             retries: 5
         labels:
-                - traefik.enable=false
+            - traefik.enable=false
 
     redis:
         image: redis:7-alpine
@@ -63,12 +63,12 @@ services:
         image: minio/minio:latest
         container_name: minio_storage
         command: server /data --console-address ":9001"
-        ports: 
+        ports:
             - "9000:9000"
             - "9001:9001"
-        volumes: 
+        volumes:
             - minio_data:/data
-        environment: 
+        environment:
             - MINIO_ROOT_USER=${S3_ACCESS_KEY}
             - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY}
         networks:
@@ -80,7 +80,7 @@ services:
             timeout: 20s
             retries: 3
         labels:
-                - "traefik.enable=false" #not expose directly. accessed via SDK
+            - "traefik.enable=false" #not expose directly. accessed via SDK
     #service to create minIO buckets on startup
     create-buckets:
         image: minio/mc
@@ -211,21 +211,21 @@ services:
         networks:
             - app-network
         labels:
-                - "traefik.enable=false" #worker is not a web service but a midleman betwen the backend and ml service
+            - "traefik.enable=false" #worker is not a web service but a midleman betwen the backend and ml service
     flower:
         image: mher/flower
         container_name: flower
         command: celery --broker=redis://redis:6379/0 flower --port=5555
         networks:
-        - app-network
+            - app-network
         depends_on:
-            - redis  # or your actual broker service
+            - redis # or your actual broker service
             - worker
         labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.flower.rule=Host(`flower.docker.localhost`)"  
-        - "traefik.http.routers.flower.entrypoints=web"
-        - "traefik.http.services.flower.loadbalancer.server.port=5555"
+            - "traefik.enable=true"
+            - "traefik.http.routers.flower.rule=Host(`flower.docker.localhost`)"
+            - "traefik.http.routers.flower.entrypoints=web"
+            - "traefik.http.services.flower.loadbalancer.server.port=5555"
 
     chroma_db:
         build:
@@ -233,18 +233,18 @@ services:
             dockerfile: Dockerfile
         container_name: chroma_db_server
         environment:
-        - CHROMA_DB_IMPL=duckdb+parquet  # Example setting, configure as needed
+            - CHROMA_DB_IMPL=duckdb+parquet # Example setting, configure as needed
         # Add other environment variables as needed, e.g.:
         # - CHROMA_SETTINGS=...
         volumes:
-        - chroma_data:/data  # Persist data here
+            - chroma_data:/data # Persist data here
         healthcheck:
             test: ["CMD-SHELL", "curl -f http://localhost:8000/docs || exit 1"] # change later for /api/v2/healthcheck
             interval: 10s
             timeout: 10s
             retries: 3
         networks:
-        - app-network
+            - app-network
         labels:
             - "traefik.enable=true"
             - "traefik.http.routers.chroma_db.rule=Host(`chroma_db.docker.localhost`)"
@@ -255,6 +255,8 @@ services:
         build:
             context: ./frontend
             dockerfile: Dockerfile
+            args:
+                VITE_API_URL: http://backend.docker.localhost/
         container_name: fashion_ai_frontend
         volumes:
             - ./frontend/src:/app/src
@@ -278,3 +280,5 @@ volumes:
 networks:
     app-network:
         driver: bridge
+
+
