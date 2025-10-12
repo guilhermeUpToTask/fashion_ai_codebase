@@ -5,8 +5,6 @@ import type { JobStatus, JobType } from "@/client/types.gen";
 //TODO: use the use job status to pool the image later
 async function waitForJobCompletion(jobId: string) {
     while (true) {
-
-
         const job = await Jobs.getJobStatus({ path: { job_id: jobId } });
 
         if (job.data?.is_completed) return job.data;
