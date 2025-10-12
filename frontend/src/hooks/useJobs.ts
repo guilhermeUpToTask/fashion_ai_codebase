@@ -3,12 +3,9 @@ import { Jobs } from "@/client/sdk.gen";
 import type { JobStatus, JobType } from "@/client/types.gen";
 
 //TODO: use the use job status to pool the image later
-async function waitForJobCompletion(jobId: string, timeoutMs = 30000) {
-    const start = Date.now();
+async function waitForJobCompletion(jobId: string) {
     while (true) {
-        if (Date.now() - start > timeoutMs) {
-            throw new Error("Job did not complete in time");
-        }
+
 
         const job = await Jobs.getJobStatus({ path: { job_id: jobId } });
 
