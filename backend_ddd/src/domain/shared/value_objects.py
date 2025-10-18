@@ -56,3 +56,10 @@ class DescriptiveString:
                 f"{self.FIELD_NAME} Cannot exceed {self.MAX_LENGTH} characters"
             )
         object.__setattr__(self, "value", normalized)
+
+
+@dataclass(frozen=True)
+class TimeEvent:
+    value: str
+    
+    
