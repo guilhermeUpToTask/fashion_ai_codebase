@@ -147,7 +147,7 @@ class ImageAnalysisAggregate(Aggregate):
                 missing_property = True
         if missing_property:
             raise MissingItemException(
-                f"Some items is missing critical propertys! {self.clothing_items}"
+                f"Some items are missing critical properties! {self.clothing_items}"
             )
 
     # lifecycle transitions
@@ -196,40 +196,35 @@ class ImageAnalysisAggregate(Aggregate):
             raise MissingItemException("pre processed image is missing.")
 
         if len(detected_items) == 0:
-            self._mark_transition(
-                AnalysisStatusEnum.DETECTING, AnalysisStatusEnum.NO_CLOTHS
-            )
             new_msg = (message + " - " if message else "") + "No Clothing items..."
-            self._add_step(AnalysisStatusEnum.NO_CLOTHS, new_msg)
+            self._mark_transition_and_add_step(
+                AnalysisStatusEnum.DETECTING, AnalysisStatusEnum.NO_CLOTHS, new_msg
+            )
             return
 
         for item in detected_items:
             self.add_clothing_item(item)
 
-        self._mark_transition(AnalysisStatusEnum.DETECTING, AnalysisStatusEnum.DETECTED)
-        self._add_step(AnalysisStatusEnum.DETECTED, message)
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.DETECTING, AnalysisStatusEnum.DETECTED, message
+        )
 
     def start_describing(self, message: str | None = None) -> None:
-        if self.status.value == AnalysisStatusEnum.NO_CLOTHS:
-            return
         self._check_cloth_items(True)
 
-        self._mark_transition(
-            AnalysisStatusEnum.DETECTED, AnalysisStatusEnum.DESCRIBING
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.DETECTED, AnalysisStatusEnum.DESCRIBING, message
         )
-        self._add_step(AnalysisStatusEnum.DESCRIBING, message)
 
     def finish_describing(
         self,
         cloth_labels: Dict[ClothingItemId, Label],
         message: str | None = None,
     ) -> None:
-        if self.status.value == AnalysisStatusEnum.NO_CLOTHS:
-            return
 
         if len(cloth_labels) != len(self.clothing_items):
             raise InvariantViolationException(
-                f"cloth labels size is diferent than cloth items:{len(cloth_labels)}-{len(self.clothing_items)}"
+                f"cloth labels size is different than cloth items:{len(cloth_labels)}-{len(self.clothing_items)}"
             )
         self._check_cloth_items(True)
 
@@ -237,32 +232,25 @@ class ImageAnalysisAggregate(Aggregate):
             item = self._get_item_or_fail(cloth_id)
             item.attach_label(cloth_labels[cloth_id])
 
-        self._mark_transition(
-            AnalysisStatusEnum.DESCRIBING, AnalysisStatusEnum.DESCRIBED
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.DESCRIBING, AnalysisStatusEnum.DESCRIBED, message
         )
-        self._add_step(AnalysisStatusEnum.DESCRIBED, message)
 
     def start_embedding(self, message: str | None = None) -> None:
-        if self.status.value == AnalysisStatusEnum.NO_CLOTHS:
-            return
         self._check_cloth_items(True)
 
-        self._mark_transition(
-            AnalysisStatusEnum.DESCRIBED, AnalysisStatusEnum.EMBEDDING
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.DESCRIBED, AnalysisStatusEnum.EMBEDDING, message
         )
-        self._add_step(AnalysisStatusEnum.EMBEDDING, message)
 
     def finish_embedding(
         self,
         cloth_embeddings: Dict[ClothingItemId, EmbeddingId],
         message: str | None = None,
     ) -> None:
-        if self.status.value == AnalysisStatusEnum.NO_CLOTHS:
-            return
-
         if len(cloth_embeddings) != len(self.clothing_items):
             raise InvariantViolationException(
-                f"cloth embeddings size is diferent than cloth items:{len(cloth_embeddings)}-{len(self.clothing_items)}"
+                f"cloth embeddings size is different than cloth items:{len(cloth_embeddings)}-{len(self.clothing_items)}"
             )
         self._check_cloth_items(True)
 
