@@ -57,11 +57,11 @@ class AnalysisTimestamps(ValueObject):
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
-    def mark_started(self) -> "AnalysisTimestamps":
-        return replace(self, started_at=datetime.now(timezone.utc))
+    def mark_started(self, timestamp: datetime) -> "AnalysisTimestamps":
+        return replace(self, started_at=timestamp)
 
-    def mark_completed(self) -> "AnalysisTimestamps":
-        return replace(self, completed_at=datetime.now(timezone.utc))
+    def mark_completed(self, timestamp: datetime) -> "AnalysisTimestamps":
+        return replace(self, completed_at=timestamp)
 
 
 @dataclass(frozen=True)
