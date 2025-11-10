@@ -56,6 +56,13 @@ class ImageAnalysisAggregate(Aggregate):
     def retries_for(self, status_enum: AnalysisStatusEnum) -> int:
         return self.p_history.retries_for_status(AnalysisStatus(status_enum))
 
+    def is_empty_result(self) -> bool:
+        """
+        Returns True if detection completed with no items found.
+        Only valid after detection phase completes.
+        """
+        return self.status.value == AnalysisStatusEnum.NO_CLOTHS
+
     # item helpers
     def add_clothing_item(self, item: ClothingItem) -> None:
         self.clothing_items.add(item)
@@ -81,31 +88,33 @@ class ImageAnalysisAggregate(Aggregate):
             )
         item.attach_embedding(embedding_id)
 
-    # internal helpers
-    def _add_step(
-        self, status_enum: AnalysisStatusEnum, message: str | None = None
-    ) -> None:
+    # we decided to keep transition and step togheter to mitigate race condition in timestamps
+    def _mark_transition_and_add_step(
+        self,
+        expected_status: AnalysisStatusEnum,
+        new_status: AnalysisStatusEnum,
+        message: str | None = None,
+        timestamp: datetime | None = None,
+    ):
+        """Atomically transition status and add step with consistent timestamp."""
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc)
 
-        attempt = self.retries_for(status_enum) + 1
+        if self.status.value != expected_status:
+            raise InvalidTransitionException(
+                f"Current status did not match expected. current:{self.status}, expected:{expected_status}"
+            )
+
+        attempt = self.retries_for(new_status) + 1
+        self.status = AnalysisStatus(new_status)
 
         step = ProcessingStep(
-            status=AnalysisStatus(status_enum),
-            timestamp=datetime.now(timezone.utc),
+            status=self.status,
+            timestamp=timestamp,
             attempt=attempt,
             message=message,
         )
         self.p_history.add_step(step)
-
-    # TODO: evaluate the neeed to add a timestamp for status updates
-
-    def _mark_transition(
-        self, expected_status: AnalysisStatusEnum, new_status: AnalysisStatusEnum
-    ):
-        if self.status.value != expected_status:
-            raise InvalidTransitionException(
-                f"Current status did not match the expected status for this transition. current:{self.status}, expected:{expected_status}"
-            )
-        self.status = AnalysisStatus(new_status)
 
     def _get_item_or_fail(self, item_id: ClothingItemId) -> ClothingItem:
         item = self.clothing_items.get(item_id)
@@ -151,39 +160,31 @@ class ImageAnalysisAggregate(Aggregate):
             )
         if self.source_image_id is None:
             raise MissingItemException(f"Source image is missing, cannot start...")
-
-        self.timestamps = AnalysisTimestamps.mark_started(self.timestamps)
-        self._add_step(AnalysisStatusEnum.STARTED)
+        timestamp = datetime.now(timezone.utc)
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.CREATED, AnalysisStatusEnum.STARTED, None, timestamp
+        )
+        self.timestamps = AnalysisTimestamps.mark_started(self.timestamps, timestamp)
 
     def start_preprocessing(self, message: str | None = None) -> None:
-        self._check_cloth_items(False)
-
-        self._mark_transition(
-            AnalysisStatusEnum.STARTED,
-            AnalysisStatusEnum.PREPROCESSING,
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.STARTED, AnalysisStatusEnum.PREPROCESSING, message
         )
-        self._add_step(AnalysisStatusEnum.PREPROCESSING, message)
 
     def finish_preprocessing(
         self, preprocessed_image_id: ImageArtifactID, message: str | None = None
     ) -> None:
-        self._check_cloth_items(False)
-
         self.preprocessed_image_id = preprocessed_image_id
-
-        self._mark_transition(
-            AnalysisStatusEnum.PREPROCESSING,
-            AnalysisStatusEnum.PREPROCESSED,
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.PREPROCESSING, AnalysisStatusEnum.PREPROCESSED, message
         )
-        self._add_step(AnalysisStatusEnum.PREPROCESSED, message)
 
     def start_detection(self, message: str | None = None) -> None:
         self._check_cloth_items(False)
 
-        self._mark_transition(
-            AnalysisStatusEnum.PREPROCESSED, AnalysisStatusEnum.DETECTING
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.PREPROCESSED, AnalysisStatusEnum.DETECTING, message
         )
-        self._add_step(AnalysisStatusEnum.DETECTING, message)
 
     # TODO: we need to think on how we will deal with cropped imgs and bboxs
     def finish_detection(
@@ -273,23 +274,40 @@ class ImageAnalysisAggregate(Aggregate):
                 )
             item.attach_embedding(cloth_embeddings[item_id])
 
-        self._mark_transition(AnalysisStatusEnum.EMBEDDING, AnalysisStatusEnum.EMBEDDED)
-        self._add_step(AnalysisStatusEnum.EMBEDDED, message)
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.EMBEDDING, AnalysisStatusEnum.EMBEDDED, message
+        )
 
-    def complete(self, message: str | None = None) -> None:
-        if self.status.value == AnalysisStatusEnum.NO_CLOTHS:
-            self._check_cloth_items(False)
-        else:
-            self._check_cloth_items(True)
-            self._check_clothes_missing_property()
+    def complete_without_items(self, message: str | None = None) -> None:
+        """Complete analysis when no clothing items were detected."""
+        self._check_cloth_items(False)
 
-        self._mark_transition(AnalysisStatusEnum.EMBEDDED, AnalysisStatusEnum.COMPLETED)
-        self.timestamps = AnalysisTimestamps.mark_completed(self.timestamps)
-        self._add_step(AnalysisStatusEnum.COMPLETED, message)
+        timestamp = datetime.now(timezone.utc)
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.NO_CLOTHS,
+            AnalysisStatusEnum.COMPLETED,
+            message,
+            timestamp,
+        )
+        self.timestamps = AnalysisTimestamps.mark_completed(self.timestamps, timestamp)
+
+    def complete_with_items(self, message: str | None = None) -> None:
+        """Complete analysis with successfully processed clothing items."""
+        self._check_cloth_items(True)
+        self._check_clothes_missing_property()
+
+        timestamp = datetime.now(timezone.utc)
+        self._mark_transition_and_add_step(
+            AnalysisStatusEnum.EMBEDDED,
+            AnalysisStatusEnum.COMPLETED,
+            message,
+            timestamp,
+        )
+        self.timestamps = AnalysisTimestamps.mark_completed(self.timestamps, timestamp)
 
     # TODO: lets think in a strategy on dealing with theses
     def fail(self, message: str, origin: str | None) -> None:
-        NotImplementedError()
+        raise NotImplementedError()
 
     def cancel(self, message: str | None) -> None:
-        NotImplementedError()
+        raise NotImplementedError()
