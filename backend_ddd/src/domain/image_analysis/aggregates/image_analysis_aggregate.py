@@ -12,10 +12,10 @@ from src.domain.image_analysis.value_objects.clothing_item_value_objects import 
     ClothingItemId,
     Label,
 )
-from backend_ddd.src.domain.image_analysis.value_objects.embedding_value_objects import (
+from src.domain.image_analysis.value_objects.embedding_value_objects import (
     EmbeddingId,
 )
-from backend_ddd.src.domain.shared.aggregates import Aggregate
+from src.domain.shared.aggregates import Aggregate
 from src.domain.image_analysis.value_objects.image_artifact_value_objects import (
     ImageArtifactID,
 )
@@ -34,6 +34,7 @@ from src.domain.image_analysis.value_objects.image_analysis_value_objects import
 )
 
 
+# TODO: needs idemponcy for all methods
 @dataclass(eq=False)
 class ImageAnalysisAggregate(Aggregate):
     # Atributes
