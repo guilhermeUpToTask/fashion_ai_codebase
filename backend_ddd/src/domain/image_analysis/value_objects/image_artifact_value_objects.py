@@ -4,11 +4,10 @@ from src.domain.shared.value_objects import DescriptiveString, ValueObject, Gene
 from src.domain.image_analysis.errors import (
     InvalidImageDimension,
     InvalidImageType,
-    InvalidImageBlobSize,
+    InvalidURI
 )
 
 
-@dataclass(frozen=True)
 class ImageArtifactID(GenericUUID):
     pass
 
@@ -54,7 +53,7 @@ class ImageMimeType(DescriptiveString):
         super().__post_init__()
 
         value_lower = self.value.lower()
-        if self.value not in self.ALLOWED_TYPES:
+        if value_lower not in self.ALLOWED_TYPES:
             raise InvalidImageType(
                 f"Unsupported image type: {self.value}. Allowed types: {', '.join(self.ALLOWED_TYPES)}"
             )
@@ -62,29 +61,19 @@ class ImageMimeType(DescriptiveString):
         object.__setattr__(self, "value", value_lower)
 
 
+# TODO: after infrasctructure layer of storage system is consolidate, analysis way of validatig a correct imageURI
+
+@dataclass(frozen=True)
+class ImageURI(DescriptiveString):
+    MAX_LENGTH = 1024
+    EXCEPTION_CLASS = InvalidURI
+    FIELD_NAME = "Image URI"
+
+
+
 @dataclass(frozen=True)
 class ImageMetadata(ValueObject):
     mime_type: ImageMimeType
     width: ImageWidth
     height: ImageHeight
-
-
-@dataclass(frozen=True)
-class ImageBlob(ValueObject):
-    data: bytes
-
-    MAX_SIZE_BYTES = 10 * 1024 * 1024  # e.g., 10 MB limit
-
-    def __post_init__(self):
-        if not isinstance(self.data, bytes) or not self.data:
-            raise InvalidImageBlobSize("ImageBlob must contain non-empty bytes")
-        if len(self.data) > self.MAX_SIZE_BYTES:
-            raise InvalidImageBlobSize(
-                f"ImageBlob exceeds maximum allowed size: {self.MAX_SIZE_BYTES}"
-            )
-
-
-# TODO: after infrasctructure layer of storage system is consolidate, analysis way of validatig a correct imageURI
-@dataclass(frozen=True)
-class ImageURI(ValueObject):
-    value: DescriptiveString
+    uri: ImageURI
