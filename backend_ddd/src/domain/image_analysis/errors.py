@@ -36,13 +36,6 @@ class InvalidImageType(InvalidValue):
     Raised when the image type is not supported.
     """
 
-
-class InvalidImageBlobSize(InvalidValue):
-    """
-    Raised when the image blob size exceeds the max size or is empty.
-    """
-
-
 class InvalidBoundingBox(InvalidValue):
     """
     Raised when the bounding box of a cloth item is invalid.
@@ -52,4 +45,9 @@ class InvalidBoundingBox(InvalidValue):
 class InvalidImageAnalysisStatusType(InvalidValue):
     """
     Raised when trying to set a invalid image analysis status type.
+    """
+
+class InvalidURI(InvalidValue):
+    """
+    Raised when trying to set a invalid image URI
     """
