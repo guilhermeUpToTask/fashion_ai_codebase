@@ -7,10 +7,11 @@ from src.domain.shared.errors import InvalidValue
 
 
 class GenericUUID(uuid.UUID):
+    
     # generates id
     @classmethod
     def next_id(cls):
-        return cls(int=uuid.uuid4().int)
+        return cls(int=int(uuid.uuid4()))
 
     # makes this class be seen by pydantic as uuid
     @classmethod
