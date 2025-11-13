@@ -1,6 +1,4 @@
-import pytest
-from src.domain.shared.value_objects import GenericUUID
-from src.domain.image_analysis.value_objects.embedding_value_objects import (
+from src.domain.image_analysis.value_objects.embedding_vos import (
     EmbeddingId,
     EmbeddingData,
 )

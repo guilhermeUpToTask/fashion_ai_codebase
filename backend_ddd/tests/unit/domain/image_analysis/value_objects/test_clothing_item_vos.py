@@ -1,6 +1,6 @@
 import pytest
 from src.domain.image_analysis.errors import InvalidBoundingBox
-from src.domain.image_analysis.value_objects.clothing_item_value_objects import (
+from src.domain.image_analysis.value_objects.clothing_item_vos import (
     Label,
     BoundingBox,
     ClothingItemId,

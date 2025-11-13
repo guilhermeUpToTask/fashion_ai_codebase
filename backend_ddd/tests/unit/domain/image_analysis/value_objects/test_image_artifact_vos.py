@@ -1,5 +1,5 @@
 import pytest
-from src.domain.image_analysis.value_objects.image_artifact_value_objects import (
+from src.domain.image_analysis.value_objects.image_artifact_vos import (
     ImageArtifactID,
     ImageWidth,
     ImageHeight,
@@ -12,8 +12,6 @@ from src.domain.image_analysis.errors import (
     InvalidImageType,
     InvalidURI,
 )
-from src.domain.shared.value_objects import DescriptiveString, GenericUUID
-import uuid
 
 
 # ID
@@ -88,9 +86,7 @@ def test_image_metadata_valid_instance():
         mime_type=ImageMimeType("image/png"),
         width=ImageWidth(200),
         height=ImageHeight(300),
-        uri=ImageURI("https://example.com/image.jpg"),
     )
     assert metadata.mime_type.value == "image/png"
     assert metadata.width.value == 200
     assert metadata.height.value == 300
-    assert metadata.uri.value == "https://example.com/image.jpg"
