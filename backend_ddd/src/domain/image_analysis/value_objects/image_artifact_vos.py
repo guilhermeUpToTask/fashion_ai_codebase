@@ -76,4 +76,3 @@ class ImageMetadata(ValueObject):
     mime_type: ImageMimeType
     width: ImageWidth
     height: ImageHeight
-    uri: ImageURI

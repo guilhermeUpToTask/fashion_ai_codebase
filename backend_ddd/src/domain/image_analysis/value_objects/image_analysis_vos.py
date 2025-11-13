@@ -1,12 +1,7 @@
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Dict, Iterator
 
-from src.domain.image_analysis.entities.clothing_item import ClothingItem
-from src.domain.image_analysis.value_objects.clothing_item_value_objects import (
-    ClothingItemId,
-)
 from src.domain.shared.value_objects import GenericUUID, ValueObject
 from src.domain.image_analysis.errors import InvalidImageAnalysisStatusType
 
@@ -15,7 +10,7 @@ class ImageAnalysisID(GenericUUID):
     pass
 
 
-class AnalysisStatusEnum(Enum):
+class StatusEnum(Enum):
     """Status of the image analysis workflow"""
 
     CREATED = "created"
@@ -36,18 +31,18 @@ class AnalysisStatusEnum(Enum):
 
 @dataclass(frozen=True)
 class AnalysisStatus:
-    value: AnalysisStatusEnum
+    value: StatusEnum
 
     def __post_init__(self):
-        if not isinstance(self.value, AnalysisStatusEnum):
+        if not isinstance(self.value, StatusEnum):
             raise InvalidImageAnalysisStatusType("Invalid status: {self.value}")
 
     @property
     def is_terminal(self) -> bool:
         return self.value in (
-            AnalysisStatusEnum.COMPLETED,
-            AnalysisStatusEnum.FAILED,
-            AnalysisStatusEnum.CANCELLED,
+            StatusEnum.COMPLETED,
+            StatusEnum.FAILED,
+            StatusEnum.CANCELLED,
         )
 
 
@@ -90,7 +85,7 @@ class ProcessingStep(ValueObject):
 
 
 @dataclass(frozen=True)
-class ProcessingHistory:
+class ProcessingHistory(ValueObject):
     steps: tuple[ProcessingStep, ...]
 
     def add_step(self, step: ProcessingStep) -> "ProcessingHistory":
@@ -105,44 +100,11 @@ class ProcessingHistory:
 
     @property
     def has_failed(self) -> bool:
-        return any(s.status.value == AnalysisStatusEnum.FAILED for s in self.steps)
+        return any(s.status.value == StatusEnum.FAILED for s in self.steps)
 
     @property
     def is_completed(self) -> bool:
-        return any(s.status.value == AnalysisStatusEnum.COMPLETED for s in self.steps)
+        return any(s.status.value == StatusEnum.COMPLETED for s in self.steps)
 
     def __len__(self) -> int:
         return len(self.steps)
-
-
-class ClothingItemsMap:
-    def __init__(self):
-        self._items: Dict[ClothingItemId, ClothingItem] = {}
-
-    def add(self, item: ClothingItem) -> None:
-        """Add or replace a clothing item by ID."""
-        self._items[item.id] = item
-
-    def get(self, item_id: ClothingItemId) -> ClothingItem | None:
-        """Retrieve an item by its ID."""
-        return self._items.get(item_id)
-
-    def remove(self, item_id: ClothingItemId) -> None:
-        """Remove an item if it exists."""
-        self._items.pop(item_id, None)
-
-    def all(self) -> list[ClothingItem]:
-        """Return all items."""
-        return list(self._items.values())
-
-    def __iter__(self) -> Iterator[ClothingItem]:
-        return iter(self._items.values())
-
-    def __contains__(self, item_id: ClothingItemId) -> bool:
-        return item_id in self._items
-
-    def __len__(self) -> int:
-        return len(self._items)
-
-    def __repr__(self):
-        return f"ClothingItemsMap({list(self._items.keys())})"
