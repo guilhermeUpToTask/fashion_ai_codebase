@@ -44,9 +44,9 @@ class ImageAnalysisAggregate(Aggregate):
     clothing_items: Dict[ClothingItemId, ClothingItem]
 
     source_image_id: ImageArtifactID
-    preprocessed_image_id: ImageArtifactID | None
+    preprocessed_image_id: ImageArtifactID | None = None
 
-    error: AnalysisError | None
+    error: AnalysisError | None = None
 
     # query helpers
     def last_processing_step(self) -> ProcessingStep | None:

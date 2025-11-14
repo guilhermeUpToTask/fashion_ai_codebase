@@ -29,6 +29,7 @@ class StatusEnum(Enum):
     CANCELLED = "cancelled"
 
 
+# TODO: avaliate the need of having a class analysis status or just have the status enum
 @dataclass(frozen=True)
 class AnalysisStatus:
     value: StatusEnum
@@ -97,6 +98,13 @@ class ProcessingHistory(ValueObject):
     @property
     def last_step(self) -> ProcessingStep | None:
         return self.steps[-1] if self.steps else None
+
+    @property
+    def previuos_non_failed_status(self) -> StatusEnum | None:
+        for step in reversed(self.steps[:-1]):
+            if step.status.value != StatusEnum.FAILED:
+                return step.status.value
+        return None
 
     @property
     def has_failed(self) -> bool:
