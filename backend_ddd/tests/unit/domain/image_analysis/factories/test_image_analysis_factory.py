@@ -21,7 +21,6 @@ from src.domain.image_analysis.value_objects.image_analysis_vos import (
     AnalysisStatus,
     AnalysisTimestamps,
     ImageAnalysisID,
-    ProcessingHistory,
     ProcessingStep,
     StatusEnum,
 )
@@ -111,7 +110,6 @@ def test_create_generates_unique_ids(factory, sample_image_id):
 def test_reconstitute_with_created_status(factory, sample_image_id, sample_timestamps):
     analysis_id = ImageAnalysisID.next_id()
     status = AnalysisStatus(StatusEnum.CREATED)
-
     aggregate = factory.reconstitute(
         id=analysis_id,
         created_at=sample_timestamps.created_at,
@@ -519,7 +517,7 @@ def test_completed_without_preprocessed_image_id_raises_error(
             id=ImageAnalysisID.next_id(),
             created_at=sample_timestamps.created_at,
             started_at=sample_timestamps.started_at,
-            completed_at=sample_timestamps.completed_at,
+            completed_at=datetime(2024, 1, 1, 12, 1, 0, tzinfo=timezone.utc),
             source_img_id=sample_image_id,
             preprocessed_img_id=None,  # Missing preprocessed img id!
             clothing_items=[],
@@ -644,7 +642,6 @@ def test_completed_with_invalid_previous_status_raises_error(
     status = AnalysisStatus(StatusEnum.COMPLETED)
     preprocessed_id = ImageArtifactID.next_id()
 
-    # STARTED is not a valid previous status for COMPLETED
     step1 = ProcessingStep.new(
         status=AnalysisStatus(StatusEnum.STARTED), attempt=1, message="Started"
     )
@@ -670,40 +667,42 @@ def test_completed_with_invalid_previous_status_raises_error(
         )
 
     # Items Fields
-    def test_all_items_have_field_returns_true_when_all_have_field(self, factory):
-        analysis_id = ImageAnalysisID.next_id()
-        items = {
-            ClothingItemId.next_id(): ClothingItem(
-                id=ClothingItemId.next_id(),
-                image_aggregate_id=analysis_id,
-                bbox=BoundingBox(x_min=10, x_max=100, y_min=10, y_max=100),
-                label=Label(
-                    color=DescriptiveString("blue"),
-                    style=DescriptiveString("casual"),
-                    pattern=DescriptiveString("solid"),
-                    category=DescriptiveString("t-shirt"),
-                ),
-                cropped_image_id=None,
-                embedding_id=None,
-            ),
-            ClothingItemId.next_id(): ClothingItem(
-                id=ClothingItemId.next_id(),
-                image_aggregate_id=analysis_id,
-                bbox=BoundingBox(x_min=10, x_max=100, y_min=10, y_max=100),
-                label=Label(
-                    color=DescriptiveString("red"),
-                    style=DescriptiveString("formal"),
-                    pattern=DescriptiveString("solid"),
-                    category=DescriptiveString("t-shirt"),
-                ),
-                cropped_image_id=None,
-                embedding_id=None,
-            ),
-        }
 
-        result = factory._all_items_have_field(items, "label")
 
-        assert result is True
+def test_all_items_have_field_returns_true_when_all_have_field(factory):
+    analysis_id = ImageAnalysisID.next_id()
+    items = {
+        ClothingItemId.next_id(): ClothingItem(
+            id=ClothingItemId.next_id(),
+            image_aggregate_id=analysis_id,
+            bbox=BoundingBox(x_min=10, x_max=100, y_min=10, y_max=100),
+            label=Label(
+                color=DescriptiveString("blue"),
+                style=DescriptiveString("casual"),
+                pattern=DescriptiveString("solid"),
+                category=DescriptiveString("t-shirt"),
+            ),
+            cropped_image_id=None,
+            embedding_id=None,
+        ),
+        ClothingItemId.next_id(): ClothingItem(
+            id=ClothingItemId.next_id(),
+            image_aggregate_id=analysis_id,
+            bbox=BoundingBox(x_min=10, x_max=100, y_min=10, y_max=100),
+            label=Label(
+                color=DescriptiveString("red"),
+                style=DescriptiveString("formal"),
+                pattern=DescriptiveString("solid"),
+                category=DescriptiveString("t-shirt"),
+            ),
+            cropped_image_id=None,
+            embedding_id=None,
+        ),
+    }
+
+    result = factory.rules.all_items_have_field(items, "label")
+
+    assert result is True
 
 
 def test_all_items_have_field_returns_false_when_field_is_none(factory):
@@ -718,7 +717,7 @@ def test_all_items_have_field_returns_false_when_field_is_none(factory):
         ),
     }
 
-    result = factory._all_items_have_field(items, "label")
+    result = factory.rules.all_items_have_field(items, "label")
 
     assert result is False
 
@@ -735,7 +734,7 @@ def test_all_items_have_field_returns_false_when_field_missing(factory):
         ),
     }
 
-    result = factory._all_items_have_field(items, "nonexistent_field")
+    result = factory.rules.all_items_have_field(items, "nonexistent_field")
 
     assert result is False
 
@@ -743,6 +742,134 @@ def test_all_items_have_field_returns_false_when_field_missing(factory):
 def test_all_items_have_field_returns_true_for_empty_dict(factory):
     items = {}
 
-    result = factory._all_items_have_field(items, "label")
+    result = factory.rules.all_items_have_field(items, "label")
 
     assert result is True
+
+
+# TODO: test timestamps and duplicates items or worng ids.
+
+# timestamps
+
+
+def test_timestamp_missing_fields_raises(factory, sample_timestamps):
+
+    with pytest.raises(
+        CorruptedAggregateError,
+        match="Image Analysis timestamp missing created_at in status",
+    ):
+        factory.reconstitute(
+            id=ImageAnalysisID.next_id(),
+            created_at=None,  # Missing created_at
+            started_at=sample_timestamps.started_at,
+            completed_at=None,
+            status=AnalysisStatus(StatusEnum.STARTED),
+            source_img_id=ImageArtifactID.next_id(),
+            clothing_items=[],
+            steps=(),
+        )
+    with pytest.raises(
+        CorruptedAggregateError,
+        match="Image Analysis timestamp missing started_at in status",
+    ):
+        factory.reconstitute(
+            id=ImageAnalysisID.next_id(),
+            created_at=sample_timestamps.created_at,
+            started_at=None,  # Missing started at
+            completed_at=None,
+            status=AnalysisStatus(StatusEnum.STARTED),
+            source_img_id=ImageArtifactID.next_id(),
+            clothing_items=[],
+            steps=(),
+        )
+
+    step1 = ProcessingStep(
+        status=AnalysisStatus(StatusEnum.NO_CLOTHS),
+        timestamp=sample_timestamps.started_at,
+    )
+    step2 = ProcessingStep(
+        status=AnalysisStatus(StatusEnum.COMPLETED),
+        timestamp=sample_timestamps.started_at,
+    )
+    with pytest.raises(
+        CorruptedAggregateError,
+        match="Image Analysis timestamp missing completed_at in status",
+    ):
+        factory.reconstitute(
+            id=ImageAnalysisID.next_id(),
+            created_at=sample_timestamps.created_at,
+            started_at=sample_timestamps.started_at,
+            completed_at=None,  # Missing completed_at
+            status=AnalysisStatus(StatusEnum.COMPLETED),
+            source_img_id=ImageArtifactID.next_id(),
+            clothing_items=[],
+            steps=(step1, step2),
+        )
+
+
+def test_list_items_duplicates_raises(factory, sample_timestamps):
+    analysis_id = ImageAnalysisID.next_id()
+    item_same_id = ClothingItemId.next_id()
+
+    item1 = ClothingItem(
+        id=item_same_id,
+        image_aggregate_id=analysis_id,
+        bbox=BoundingBox(x_min=10, x_max=100, y_min=10, y_max=100),
+        label=Label(
+            color=DescriptiveString("blue"),
+            style=DescriptiveString("casual"),
+            pattern=DescriptiveString("solid"),
+            category=DescriptiveString("t-shirt"),
+        ),
+        cropped_image_id=ImageArtifactID.next_id(),
+        embedding_id=EmbeddingId.next_id(),
+    )
+    item2 = ClothingItem(
+        id=item_same_id,
+        image_aggregate_id=analysis_id,
+        bbox=BoundingBox(x_min=10, x_max=100, y_min=10, y_max=100),
+        label=Label(
+            color=DescriptiveString("blue"),
+            style=DescriptiveString("casual"),
+            pattern=DescriptiveString("solid"),
+            category=DescriptiveString("t-shirt"),
+        ),
+        cropped_image_id=ImageArtifactID.next_id(),
+        embedding_id=EmbeddingId.next_id(),
+    )
+
+    with pytest.raises(
+        CorruptedAggregateError,
+        match="Duplicate item ID found:",
+    ):
+        factory.reconstitute(
+            id=analysis_id,
+            created_at=sample_timestamps.created_at,
+            started_at=sample_timestamps.started_at,
+            completed_at=None,
+            status=AnalysisStatus(StatusEnum.DETECTED),
+            source_img_id=ImageArtifactID.next_id(),
+            clothing_items=[item1, item2],
+            steps=(),
+        )
+        
+def test_list_items_wrong_origin_raises(factory, sample_timestamps):
+    analysis_id = ImageAnalysisID.next_id()
+
+    item1 = create_sample_clothing_item_for_agg(analysis_id)
+    item2 = create_sample_clothing_item_for_agg(analysis_id)
+    
+    with pytest.raises(
+        CorruptedAggregateError,
+        match="Origin id mismatch",
+    ):
+        factory.reconstitute(
+            id=ImageAnalysisID.next_id(),
+            created_at=sample_timestamps.created_at,
+            started_at=sample_timestamps.started_at,
+            completed_at=None,
+            status=AnalysisStatus(StatusEnum.DETECTED),
+            source_img_id=ImageArtifactID.next_id(),
+            clothing_items=[item1, item2],
+            steps=(),
+        )
