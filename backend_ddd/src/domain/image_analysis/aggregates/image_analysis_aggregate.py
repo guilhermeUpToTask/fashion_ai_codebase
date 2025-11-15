@@ -85,11 +85,9 @@ class ImageAnalysisAggregate(Aggregate):
             raise MissingItemException(
                 f"Could not find ClothingItem(id={item_id}) while attaching embedding {embedding_id}. items:{self.clothing_items}"
             )
-        # TODO:      Algumas validações (ex.: item já tem embedding) são feitas aqui. Considere empurrar invariantes para a entidade ClothingItem (ex.: attach_embedding já deveria lançar se tiver embedding).
         item.attach_embedding(embedding_id)
 
-    # we decided to keep transition and step togheter to mitigate race condition in timestamps
-    # TODO: check if the current step is failed and the last step was the expected step for retry logic
+
     def _mark_transition_and_add_step(
         self,
         expected_status: StatusEnum | None,
@@ -120,7 +118,7 @@ class ImageAnalysisAggregate(Aggregate):
             attempt=attempt,
             message=message,
         )
-        self.p_history.add_step(step)
+        self.p_history = self.p_history.add_step(step)
 
     def _get_item_or_fail(self, item_id: ClothingItemId) -> ClothingItem:
         item = self.clothing_items.get(item_id)
@@ -160,9 +158,9 @@ class ImageAnalysisAggregate(Aggregate):
     def start(self) -> None:
         self._check_cloth_items(False)
 
-        if len(self.p_history) > 0:
+        if len(self.p_history) > 0 and self.p_history.previuos_non_failed_status != StatusEnum.STARTED:
             raise InvariantViolationException(
-                f"should not have any processing history:{len(self.p_history)} "
+                f"should not have any processing history:{self.p_history}. "
             )
 
         timestamp = datetime.now(timezone.utc)
