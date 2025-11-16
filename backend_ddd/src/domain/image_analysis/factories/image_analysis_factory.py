@@ -15,7 +15,7 @@ from src.domain.image_analysis.value_objects.image_analysis_vos import (
     ProcessingStep,
     StatusEnum,
 )
-from src.domain.image_analysis.value_objects.image_artifact_vos import ImageArtifactID
+from src.domain.shared.value_objects import ImageArtifactID
 from src.domain.image_analysis.errors import CorruptedAggregateError
 from src.domain.image_analysis.rules.analysis_aggregate_rules import ImageAnalysisRules
 

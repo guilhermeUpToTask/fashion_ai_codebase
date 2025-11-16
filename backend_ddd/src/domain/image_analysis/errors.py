@@ -29,18 +29,6 @@ class InvalidLabel(InvalidValue):
     """
 
 
-class InvalidImageDimension(InvalidValue):
-    """
-    Raised when an image's width or height exceeds the maximum or the minimum allowed pixel dimensions.
-    """
-
-
-class InvalidImageType(InvalidValue):
-    """
-    Raised when the image type is not supported.
-    """
-
-
 class InvalidBoundingBox(InvalidValue):
     """
     Raised when the bounding box of a cloth item is invalid.
@@ -53,7 +41,16 @@ class InvalidImageAnalysisStatusType(InvalidValue):
     """
 
 
-class InvalidURI(InvalidValue):
-    """
-    Raised when trying to set a invalid image URI
-    """
+class ImageAnalysisRepositoryException(Exception):
+    """Base exception for repository operations"""
+    pass
+
+
+class AggregateNotFoundException(ImageAnalysisRepositoryException):
+    """Raised when attempting to operate on non-existent aggregate"""
+    pass
+
+
+class DuplicateAggregateException(ImageAnalysisRepositoryException):
+    """Raised when attempting to add an aggregate that already exists"""
+    pass

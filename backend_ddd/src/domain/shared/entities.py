@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Generic, Type, TypeVar, cast
-from src.domain.shared.value_objects import GenericUUID
+from datetime import datetime, timezone
+from typing import Any, ClassVar, Generic, List, Type, TypeVar, cast
+from src.domain.shared.value_objects import EmbeddingData, EmbeddingId, GenericUUID, ImageArtifactID, ImageMetadata, ImageURI
 
 EntityId = TypeVar("EntityId", bound=GenericUUID)
 
@@ -22,3 +23,21 @@ class Entity(Generic[EntityId]):
     def next_id(cls) -> EntityId:
         return cast(EntityId, cls.ID_CLASS.next_id())
 
+
+#Uselful entities across domains
+@dataclass(eq=False)
+class Embedding(Entity):
+    id: EmbeddingId
+    embedding: EmbeddingData
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    def vector(self) -> List[float]:
+        return self.embedding.vector
+@dataclass(eq=False)
+class ImageArtifact(Entity):
+    id:ImageArtifactID
+    blob_ref:ImageURI
+    metadata:ImageMetadata
+    
+    def update_metadata(self, new_metadata: ImageMetadata):
+        self.metadata = new_metadata
