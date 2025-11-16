@@ -1,8 +1,5 @@
 import pytest
 from datetime import datetime, timezone
-from src.domain.image_analysis.value_objects.embedding_vos import (
-    EmbeddingId,
-)
 from src.domain.shared.value_objects import DescriptiveString
 from src.domain.image_analysis.factories.image_analysis_factory import (
     ImageAnalysisFactory,
@@ -24,7 +21,7 @@ from src.domain.image_analysis.value_objects.image_analysis_vos import (
     ProcessingStep,
     StatusEnum,
 )
-from src.domain.image_analysis.value_objects.image_artifact_vos import ImageArtifactID
+from src.domain.shared.value_objects import ImageArtifactID, EmbeddingId
 from src.domain.image_analysis.errors import CorruptedAggregateError
 
 

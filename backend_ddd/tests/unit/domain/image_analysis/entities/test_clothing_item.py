@@ -7,9 +7,7 @@ from src.domain.image_analysis.value_objects.clothing_item_vos import (
     BoundingBox,
 )
 from src.domain.image_analysis.value_objects.image_analysis_vos import ImageAnalysisID
-from src.domain.image_analysis.value_objects.image_artifact_vos import ImageArtifactID
-from src.domain.image_analysis.entities.embedding import EmbeddingId
-from src.domain.shared.value_objects import DescriptiveString
+from src.domain.shared.value_objects import ImageArtifactID,EmbeddingId, DescriptiveString
 
 
 @pytest.fixture

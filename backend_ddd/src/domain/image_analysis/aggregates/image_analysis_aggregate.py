@@ -12,11 +12,11 @@ from src.domain.image_analysis.value_objects.clothing_item_vos import (
     ClothingItemId,
     Label,
 )
-from src.domain.image_analysis.value_objects.embedding_vos import (
+from src.domain.shared.value_objects import (
     EmbeddingId,
 )
 from src.domain.shared.aggregates import Aggregate
-from src.domain.image_analysis.value_objects.image_artifact_vos import (
+from src.domain.shared.value_objects import (
     ImageArtifactID,
 )
 from src.domain.image_analysis.entities.clothing_item import (

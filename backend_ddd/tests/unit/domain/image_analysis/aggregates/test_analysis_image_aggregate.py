@@ -10,8 +10,7 @@ from src.domain.image_analysis.value_objects.clothing_item_vos import (
     Label,
     BoundingBox,
 )
-from src.domain.image_analysis.value_objects.embedding_vos import EmbeddingId
-from src.domain.image_analysis.value_objects.image_artifact_vos import ImageArtifactID
+from src.domain.shared.value_objects import EmbeddingId, ImageArtifactID
 from src.domain.image_analysis.value_objects.image_analysis_vos import (
     AnalysisStatus,
     ImageAnalysisID,

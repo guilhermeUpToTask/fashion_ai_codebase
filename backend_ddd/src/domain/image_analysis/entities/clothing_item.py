@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from src.domain.image_analysis.errors import InvariantViolationException
-from src.domain.image_analysis.value_objects.image_artifact_vos import (
+from src.domain.shared.value_objects import (
     ImageArtifactID,
 )
 from src.domain.image_analysis.value_objects.image_analysis_vos import (
@@ -12,7 +12,7 @@ from src.domain.image_analysis.value_objects.clothing_item_vos import (
     Label,
     BoundingBox,
 )
-from src.domain.image_analysis.entities.embedding import EmbeddingId
+from src.domain.shared.entities import EmbeddingId
 
 
 @dataclass(eq=False)
