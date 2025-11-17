@@ -32,6 +32,9 @@ class ImageAnalysisRules:
             StatusEnum.STARTED: StatusRule(
                 timestamp_fields=("created_at", "started_at")
             ),
+            StatusEnum.PREPROCESSING: StatusRule(
+                timestamp_fields=("created_at", "started_at")
+            ),
             StatusEnum.PREPROCESSED: StatusRule(
                 image_fields=("preprocessed_image_id",),
                 timestamp_fields=("created_at", "started_at"),
@@ -141,30 +144,29 @@ class ImageAnalysisRules:
             )
 
     def validate_fields_for_status(self, img_analysis: ImageAnalysisAggregate):
-        status = img_analysis.status.value
-
-        status_rules = self.STATUS_RULES[status]
+        status_enum = img_analysis.status.value
+        status_rules = self.STATUS_RULES[status_enum]
 
         for field in status_rules.image_fields:
             if getattr(img_analysis, field) is None:
                 raise CorruptedAggregateError(
-                    f"Image Analysis missing {field} in status {status}"
+                    f"Image Analysis missing {field} in status {status_enum}"
                 )
 
         for field in status_rules.timestamp_fields:
             if getattr(img_analysis.timestamps, field) is None:
                 raise CorruptedAggregateError(
-                    f"Image Analysis timestamp missing {field} in status {status}"
+                    f"Image Analysis timestamp missing {field} in status {status_enum}"
                 )
 
         if status_rules.require_items and len(img_analysis.clothing_items) == 0:
             raise CorruptedAggregateError(
-                f"Image Analysis missing clothing items in status {status}"
+                f"Image Analysis missing clothing items in status {status_enum}"
             )
         for field in status_rules.item_fields:
             if not self.all_items_have_field(img_analysis.clothing_items, field):
                 raise CorruptedAggregateError(
-                    f"Image Analysis clothing items missing {field} in status {status}"
+                    f"Image Analysis clothing items missing {field} in status {status_enum}"
                 )
 
         if status_rules.context_validator:
@@ -172,5 +174,5 @@ class ImageAnalysisRules:
 
         if status_rules.require_error and img_analysis.error is None:
             raise CorruptedAggregateError(
-                f"Image Analysis missing error in status {status}"
+                f"Image Analysis missing error in status {status_enum}"
             )
