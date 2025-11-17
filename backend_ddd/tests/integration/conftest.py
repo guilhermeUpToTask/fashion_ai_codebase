@@ -3,6 +3,7 @@ import pytest
 from sqlalchemy import StaticPool, create_engine
 from sqlmodel import SQLModel, Session
 
+from src.infrastructure.repositories.image_analysis.aggregate_repository import SQLModelImageAnalysisRepository
 from src.domain.shared.value_objects import (
     EmbeddingData,
     EmbeddingId,
@@ -47,6 +48,10 @@ def sqlmodel_embedding_repo(session):
 def sqlmodel_image_artifact_repo(session):
     return SQLModelImageArtifactRepository(session)
 
+
+@pytest.fixture
+def sqlmodel_image_analysis_repo(session):
+    return SQLModelImageAnalysisRepository(session)
 
 @pytest.fixture
 def sample_embedding():

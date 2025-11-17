@@ -63,10 +63,10 @@ class ImageAnalysisFactory:
         status: AnalysisStatus,
         steps: List[ProcessingStep],
         created_at: datetime,
-        error: AnalysisError | None = None,
-        started_at: datetime | None = None,
-        completed_at: datetime | None  = None,
-        preprocessed_img_id: ImageArtifactID | None = None,
+        error: AnalysisError | None,
+        started_at: datetime | None,
+        completed_at: datetime | None,
+        preprocessed_img_id: ImageArtifactID | None,
     ) -> ImageAnalysisAggregate:
 
         timestamps = AnalysisTimestamps(created_at, started_at, completed_at)

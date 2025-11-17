@@ -65,6 +65,9 @@ class ImageAnalysisAggregate(Aggregate):
     # item helpers
     def add_clothing_item(self, item: ClothingItem):
         self.clothing_items[item.id] = item
+        
+    def remove_clothing_item(self, item: ClothingItem):
+        self.clothing_items.pop(item.id)
 
     def attach_cropped_artifact_to_item(
         self, item_id: ClothingItemId, artifact_id: ImageArtifactID
