@@ -37,7 +37,7 @@ def test_image_dimension_too_small_raises(cls):
 @pytest.mark.parametrize("cls", [ImageWidth, ImageHeight])
 def test_image_dimension_too_large_raises(cls):
     with pytest.raises(InvalidImageDimension) as e:
-        cls(1600)
+        cls(2600)
     assert "exceeds max size" in str(e.value)
 
 
