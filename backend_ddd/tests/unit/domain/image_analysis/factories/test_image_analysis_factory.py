@@ -757,13 +757,15 @@ def test_timestamp_missing_fields_raises(factory, sample_timestamps):
     ):
         factory.reconstitute(
             id=ImageAnalysisID.next_id(),
+            source_img_id=ImageArtifactID.next_id(),
+            preprocessed_img_id=None,
             created_at=None,  # Missing created_at
             started_at=sample_timestamps.started_at,
             completed_at=None,
             status=AnalysisStatus(StatusEnum.STARTED),
-            source_img_id=ImageArtifactID.next_id(),
             clothing_items=[],
             steps=(),
+            error=None
         )
     with pytest.raises(
         CorruptedAggregateError,
@@ -771,13 +773,15 @@ def test_timestamp_missing_fields_raises(factory, sample_timestamps):
     ):
         factory.reconstitute(
             id=ImageAnalysisID.next_id(),
+            source_img_id=ImageArtifactID.next_id(),
+            preprocessed_img_id=None,
             created_at=sample_timestamps.created_at,
             started_at=None,  # Missing started at
             completed_at=None,
             status=AnalysisStatus(StatusEnum.STARTED),
-            source_img_id=ImageArtifactID.next_id(),
             clothing_items=[],
             steps=(),
+            error=None
         )
 
     step1 = ProcessingStep(
@@ -794,13 +798,15 @@ def test_timestamp_missing_fields_raises(factory, sample_timestamps):
     ):
         factory.reconstitute(
             id=ImageAnalysisID.next_id(),
+            source_img_id=ImageArtifactID.next_id(),
+            preprocessed_img_id=None,
             created_at=sample_timestamps.created_at,
             started_at=sample_timestamps.started_at,
             completed_at=None,  # Missing completed_at
             status=AnalysisStatus(StatusEnum.COMPLETED),
-            source_img_id=ImageArtifactID.next_id(),
             clothing_items=[],
             steps=(step1, step2),
+            error=None
         )
 
 
@@ -841,13 +847,15 @@ def test_list_items_duplicates_raises(factory, sample_timestamps):
     ):
         factory.reconstitute(
             id=analysis_id,
+            source_img_id=ImageArtifactID.next_id(),
+            preprocessed_img_id=None,
             created_at=sample_timestamps.created_at,
             started_at=sample_timestamps.started_at,
             completed_at=None,
             status=AnalysisStatus(StatusEnum.DETECTED),
-            source_img_id=ImageArtifactID.next_id(),
             clothing_items=[item1, item2],
             steps=(),
+            error=None
         )
         
 def test_list_items_wrong_origin_raises(factory, sample_timestamps):
@@ -862,11 +870,13 @@ def test_list_items_wrong_origin_raises(factory, sample_timestamps):
     ):
         factory.reconstitute(
             id=ImageAnalysisID.next_id(),
+            source_img_id=ImageArtifactID.next_id(),
+            preprocessed_img_id=None,
             created_at=sample_timestamps.created_at,
             started_at=sample_timestamps.started_at,
             completed_at=None,
             status=AnalysisStatus(StatusEnum.DETECTED),
-            source_img_id=ImageArtifactID.next_id(),
             clothing_items=[item1, item2],
             steps=(),
+            error=None
         )
