@@ -9,9 +9,6 @@ from sqlmodel import (
     JSON,
     SQLModel,
 )
-from sqlalchemy.orm import Mapped, mapped_column
-
-from src.infrastructure.db.orm_base import Base
 
 
 class EmbeddingORM(SQLModel, table=True):
